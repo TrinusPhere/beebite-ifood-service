@@ -1,0 +1,4 @@
+com\fidecode\biteflowifood\domain\credential\IfoodCredentialTest.class
+com\fidecode\biteflowifood\application\usecase\PollIfoodEventsUseCaseTest.class
+com\fidecode\biteflowifood\application\usecase\SaveCredentialUseCaseTest.class
+com\fidecode\biteflowifood\domain\event\IfoodOrderStatusTest.class
