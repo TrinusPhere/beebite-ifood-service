@@ -36,7 +36,7 @@ class SaveCredentialUseCaseTest {
         SaveCredentialRequest request = new SaveCredentialRequest(storeId, "cid", "secret", "mid");
         when(encryptor.encrypt("secret")).thenReturn("encrypted-secret");
         when(authClient.authenticate("cid", "secret"))
-                .thenReturn(new IfoodTokenResponse("token-abc", "bearer", 3600L));
+                .thenReturn(new IfoodTokenResponse("token-abc", "bearer", 3600L, "refresh-abc"));
         when(repository.findByStoreId(storeId)).thenReturn(Optional.empty());
         when(repository.save(any(IfoodCredential.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -63,7 +63,7 @@ class SaveCredentialUseCaseTest {
         when(repository.findByStoreId(storeId)).thenReturn(Optional.of(existing));
         when(encryptor.encrypt("new-secret")).thenReturn("new-encrypted");
         when(authClient.authenticate("new-cid", "new-secret"))
-                .thenReturn(new IfoodTokenResponse("new-token", "bearer", 3600L));
+                .thenReturn(new IfoodTokenResponse("new-token", "bearer", 3600L, "new-refresh"));
         when(repository.save(any(IfoodCredential.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CredentialResponse response = useCase.execute(request);

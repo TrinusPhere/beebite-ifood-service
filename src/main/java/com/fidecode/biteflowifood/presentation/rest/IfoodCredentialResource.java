@@ -1,6 +1,8 @@
 package com.fidecode.biteflowifood.presentation.rest;
 
 import com.fidecode.biteflowifood.application.dto.CredentialResponse;
+import com.fidecode.biteflowifood.application.dto.ExchangeAuthCodeRequest;
+import com.fidecode.biteflowifood.application.dto.GenerateUserCodeRequest;
 import com.fidecode.biteflowifood.application.dto.SaveCredentialRequest;
 import com.fidecode.biteflowifood.application.usecase.*;
 
@@ -30,10 +32,26 @@ public class IfoodCredentialResource {
     @Inject GetCredentialUseCase getCredentialUseCase;
     @Inject DeleteCredentialUseCase deleteCredentialUseCase;
     @Inject TestConnectionUseCase testConnectionUseCase;
+    @Inject GenerateUserCodeUseCase generateUserCodeUseCase;
+    @Inject ExchangeAuthCodeUseCase exchangeAuthCodeUseCase;
 
     @POST
     public Response save(@Valid SaveCredentialRequest request) {
         CredentialResponse response = saveCredentialUseCase.execute(request);
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/user-code")
+    public Response generateUserCode(@Valid GenerateUserCodeRequest request) {
+        var response = generateUserCodeUseCase.execute(request.clientId());
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/exchange-token")
+    public Response exchangeAuthCode(@Valid ExchangeAuthCodeRequest request) {
+        CredentialResponse response = exchangeAuthCodeUseCase.execute(request);
         return Response.ok(response).build();
     }
 

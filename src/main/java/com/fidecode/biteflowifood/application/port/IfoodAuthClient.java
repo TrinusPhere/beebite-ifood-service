@@ -1,6 +1,7 @@
 package com.fidecode.biteflowifood.application.port;
 
 import com.fidecode.biteflowifood.application.dto.IfoodTokenResponse;
+import com.fidecode.biteflowifood.application.dto.IfoodUserCodeResponse;
 
 /**
  * Port — IfoodAuthClient.
@@ -10,12 +11,22 @@ import com.fidecode.biteflowifood.application.dto.IfoodTokenResponse;
 public interface IfoodAuthClient {
 
     /**
-     * Autentica com as credenciais do iFood e retorna um access token.
-     *
-     * @param clientId     client ID cadastrado no portal iFood
-     * @param clientSecret client secret descriptografado
-     * @return token de acesso OAuth
-     * @throws com.fidecode.biteflowifood.domain.shared.exception.IfoodAuthenticationException se as credenciais forem inválidas
+     * Autentica via grantType=client_credentials (App Centralizado).
      */
     IfoodTokenResponse authenticate(String clientId, String clientSecret);
+
+    /**
+     * Solicita um User Code para iniciar o fluxo OAuth de App Distribuído.
+     */
+    IfoodUserCodeResponse generateUserCode(String clientId);
+
+    /**
+     * Troca o Authorization Code pelo Access Token e Refresh Token.
+     */
+    IfoodTokenResponse exchangeAuthCode(String clientId, String clientSecret, String authorizationCode, String authorizationCodeVerifier);
+
+    /**
+     * Renova o Access Token usando o Refresh Token.
+     */
+    IfoodTokenResponse refreshToken(String clientId, String clientSecret, String refreshToken);
 }

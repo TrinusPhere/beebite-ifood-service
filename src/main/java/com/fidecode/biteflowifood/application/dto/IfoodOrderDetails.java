@@ -32,9 +32,15 @@ public record IfoodOrderDetails(
     public record IfoodCustomer(
             @JsonProperty("id") String id,
             @JsonProperty("name") String name,
-            @JsonProperty("phone") String phone,
+            @JsonProperty("phone") IfoodPhone phone,
             @JsonProperty("document") String document,
             @JsonProperty("documentType") String documentType
+    ) {}
+
+    public record IfoodPhone(
+            @JsonProperty("number") String number,
+            @JsonProperty("localizer") String localizer,
+            @JsonProperty("localizerExpiration") String localizerExpiration
     ) {}
 
     public record IfoodItem(

@@ -30,6 +30,12 @@ public class IfoodCredentialEntity {
     @Column(name = "access_token", columnDefinition = "TEXT")
     private String accessToken;
 
+    @Column(name = "refresh_token", columnDefinition = "TEXT")
+    private String refreshToken;
+
+    @Column(name = "authorization_code", length = 32)
+    private String authorizationCode;
+
     @Column(name = "token_expires_at")
     private LocalDateTime tokenExpiresAt;
 
@@ -56,6 +62,10 @@ public class IfoodCredentialEntity {
     public void setMerchantId(String m)       { this.merchantId = m; }
     public String getAccessToken()            { return accessToken; }
     public void setAccessToken(String t)      { this.accessToken = t; }
+    public String getRefreshToken()           { return refreshToken; }
+    public void setRefreshToken(String t)     { this.refreshToken = t; }
+    public String getAuthorizationCode()      { return authorizationCode; }
+    public void setAuthorizationCode(String a) { this.authorizationCode = a; }
     public LocalDateTime getTokenExpiresAt()  { return tokenExpiresAt; }
     public void setTokenExpiresAt(LocalDateTime t) { this.tokenExpiresAt = t; }
     public boolean isEnabled()               { return enabled; }

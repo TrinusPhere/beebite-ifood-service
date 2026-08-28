@@ -10,6 +10,8 @@ CREATE TABLE ifood_credential (
     encrypted_client_secret TEXT NOT NULL,
     merchant_id             VARCHAR(255) NOT NULL,
     access_token            TEXT,
+    refresh_token           TEXT,
+    authorization_code      VARCHAR(32),
     token_expires_at        TIMESTAMP,
     enabled                 BOOLEAN NOT NULL DEFAULT true,
     created_at              TIMESTAMP NOT NULL DEFAULT now(),

@@ -18,6 +18,8 @@ public final class IfoodCredentialMapper {
                 entity.getEncryptedClientSecret(),
                 entity.getMerchantId(),
                 entity.getAccessToken(),
+                entity.getRefreshToken(),
+                entity.getAuthorizationCode(),
                 entity.getTokenExpiresAt(),
                 entity.isEnabled(),
                 entity.getCreatedAt(),
@@ -33,6 +35,8 @@ public final class IfoodCredentialMapper {
         entity.setEncryptedClientSecret(domain.getEncryptedClientSecret());
         entity.setMerchantId(domain.getMerchantId());
         entity.setAccessToken(domain.getAccessToken());
+        entity.setRefreshToken(domain.getRefreshToken());
+        entity.setAuthorizationCode(domain.getAuthorizationCode());
         entity.setTokenExpiresAt(domain.getTokenExpiresAt());
         entity.setEnabled(domain.isEnabled());
         entity.setCreatedAt(domain.getCreatedAt() != null ? domain.getCreatedAt() : LocalDateTime.now());

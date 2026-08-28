@@ -54,7 +54,7 @@ final class IfoodEventMapper {
         BigDecimal totalAmount = details.total() != null ? details.total().orderAmount() : BigDecimal.ZERO;
 
         String customerName = details.customer() != null ? details.customer().name() : null;
-        String customerPhone = details.customer() != null ? details.customer().phone() : null;
+        String customerPhone = (details.customer() != null && details.customer().phone() != null) ? details.customer().phone().number() : null;
         String customerDoc = details.customer() != null ? details.customer().document() : null;
 
         return new IfoodOrderPlacedEvent(

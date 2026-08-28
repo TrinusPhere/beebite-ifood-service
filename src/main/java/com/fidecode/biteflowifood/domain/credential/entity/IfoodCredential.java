@@ -16,6 +16,8 @@ public class IfoodCredential {
     private String encryptedClientSecret;
     private String merchantId;
     private String accessToken;
+    private String refreshToken;
+    private String authorizationCode;
     private LocalDateTime tokenExpiresAt;
     private boolean enabled;
     private final LocalDateTime createdAt;
@@ -39,14 +41,16 @@ public class IfoodCredential {
     // ── Construtor privado para reconstitute ──────────────────────────────────
 
     private IfoodCredential(UUID id, UUID storeId, String clientId, String encryptedClientSecret,
-                             String merchantId, String accessToken, LocalDateTime tokenExpiresAt,
-                             boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
+                             String merchantId, String accessToken, String refreshToken, String authorizationCode,
+                             LocalDateTime tokenExpiresAt, boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.storeId = storeId;
         this.clientId = clientId;
         this.encryptedClientSecret = encryptedClientSecret;
         this.merchantId = merchantId;
         this.accessToken = accessToken;
+        this.refreshToken = refreshToken;
+        this.authorizationCode = authorizationCode;
         this.tokenExpiresAt = tokenExpiresAt;
         this.enabled = enabled;
         this.createdAt = createdAt;
@@ -57,11 +61,11 @@ public class IfoodCredential {
 
     public static IfoodCredential reconstitute(
             UUID id, UUID storeId, String clientId, String encryptedClientSecret,
-            String merchantId, String accessToken, LocalDateTime tokenExpiresAt,
-            boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
+            String merchantId, String accessToken, String refreshToken, String authorizationCode,
+            LocalDateTime tokenExpiresAt, boolean enabled, LocalDateTime createdAt, LocalDateTime updatedAt) {
 
         return new IfoodCredential(id, storeId, clientId, encryptedClientSecret,
-                merchantId, accessToken, tokenExpiresAt, enabled, createdAt, updatedAt);
+                merchantId, accessToken, refreshToken, authorizationCode, tokenExpiresAt, enabled, createdAt, updatedAt);
     }
 
     // ── Comportamentos ────────────────────────────────────────────────────────
@@ -78,11 +82,20 @@ public class IfoodCredential {
      * Atualiza o access token e calcula a data de expiração.
      *
      * @param newAccessToken  token obtido do OAuth do iFood
+     * @param newRefreshToken refresh token obtido do OAuth do iFood
      * @param expiresInSeconds duração do token em segundos
      */
-    public void updateToken(String newAccessToken, long expiresInSeconds) {
+    public void updateToken(String newAccessToken, String newRefreshToken, long expiresInSeconds) {
         this.accessToken = newAccessToken;
+        if (newRefreshToken != null && !newRefreshToken.isBlank()) {
+            this.refreshToken = newRefreshToken;
+        }
         this.tokenExpiresAt = LocalDateTime.now().plusSeconds(expiresInSeconds);
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void setAuthorizationCode(String authorizationCode) {
+        this.authorizationCode = authorizationCode;
         this.updatedAt = LocalDateTime.now();
     }
 
@@ -94,6 +107,8 @@ public class IfoodCredential {
     public String getEncryptedClientSecret()  { return encryptedClientSecret; }
     public String getMerchantId()             { return merchantId; }
     public String getAccessToken()            { return accessToken; }
+    public String getRefreshToken()           { return refreshToken; }
+    public String getAuthorizationCode()      { return authorizationCode; }
     public LocalDateTime getTokenExpiresAt()  { return tokenExpiresAt; }
     public boolean isEnabled()                { return enabled; }
     public LocalDateTime getCreatedAt()       { return createdAt; }

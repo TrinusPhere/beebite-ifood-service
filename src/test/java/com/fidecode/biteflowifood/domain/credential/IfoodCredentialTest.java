@@ -36,11 +36,11 @@ class IfoodCredentialTest {
     @Test
     void shouldReturnTokenInvalidWhenExpired() {
         IfoodCredential cred = new IfoodCredential(STORE_ID, "client-id", "secret", "merchant-id");
-        cred.updateToken("expired-token", 60); // 60 segundos
+        cred.updateToken("expired-token", "refresh", 60); // 60 segundos
         // Simula token expirado manualmente via reconstitute
         IfoodCredential expired = IfoodCredential.reconstitute(
                 UUID.randomUUID(), STORE_ID, "client-id", "secret", "merchant-id",
-                "expired-token", LocalDateTime.now().minusMinutes(1), true,
+                "expired-token", "refresh-token", "auth-code", LocalDateTime.now().minusMinutes(1), true,
                 LocalDateTime.now().minusHours(1), LocalDateTime.now().minusHours(1)
         );
         assertFalse(expired.isTokenValid());
@@ -49,7 +49,7 @@ class IfoodCredentialTest {
     @Test
     void shouldReturnTokenValidWhenWithinExpiry() {
         IfoodCredential cred = new IfoodCredential(STORE_ID, "client-id", "secret", "merchant-id");
-        cred.updateToken("valid-token", 3600); // 1 hora
+        cred.updateToken("valid-token", "refresh", 3600); // 1 hora
         assertTrue(cred.isTokenValid());
         assertEquals("valid-token", cred.getAccessToken());
     }
@@ -58,7 +58,7 @@ class IfoodCredentialTest {
     void shouldReturnTokenInvalidWhenLessThan5MinRemaining() {
         IfoodCredential cred = IfoodCredential.reconstitute(
                 UUID.randomUUID(), STORE_ID, "client-id", "secret", "merchant-id",
-                "soon-expiring-token", LocalDateTime.now().plusMinutes(3), true,
+                "soon-expiring-token", "refresh-token", "auth-code", LocalDateTime.now().plusMinutes(3), true,
                 LocalDateTime.now().minusHours(1), LocalDateTime.now().minusHours(1)
         );
         // Com menos de 5 min, deve ser considerado inválido (margem de segurança)
@@ -68,7 +68,7 @@ class IfoodCredentialTest {
     @Test
     void shouldUpdateTokenCorrectly() {
         IfoodCredential cred = new IfoodCredential(STORE_ID, "client-id", "secret", "merchant-id");
-        cred.updateToken("new-token", 7200); // 2 horas
+        cred.updateToken("new-token", "refresh", 7200); // 2 horas
 
         assertEquals("new-token", cred.getAccessToken());
         assertNotNull(cred.getTokenExpiresAt());
@@ -81,7 +81,7 @@ class IfoodCredentialTest {
         LocalDateTime now = LocalDateTime.now();
         IfoodCredential cred = IfoodCredential.reconstitute(
                 id, STORE_ID, "cid", "enc-secret", "mid",
-                "token", now.plusHours(1), true, now, now
+                "token", "refresh-token", "auth-code", now.plusHours(1), true, now, now
         );
 
         assertEquals(id, cred.getId());

@@ -113,8 +113,15 @@ public class PollIfoodEventsUseCase {
         if (!credential.isTokenValid()) {
             LOG.infof("[IFOOD-POLL] Token expirado para store=%s, renovando...", credential.getStoreId());
             String plainSecret = secretEncryptor.decrypt(credential.getEncryptedClientSecret());
-            IfoodTokenResponse newToken = authClient.authenticate(credential.getClientId(), plainSecret);
-            credential.updateToken(newToken.accessToken(), newToken.expiresIn());
+            IfoodTokenResponse newToken;
+            
+            if (credential.getRefreshToken() != null && !credential.getRefreshToken().isBlank()) {
+                newToken = authClient.refreshToken(credential.getClientId(), plainSecret, credential.getRefreshToken());
+            } else {
+                newToken = authClient.authenticate(credential.getClientId(), plainSecret);
+            }
+            
+            credential.updateToken(newToken.accessToken(), newToken.refreshToken(), newToken.expiresIn());
             credentialRepository.save(credential);
         }
     }

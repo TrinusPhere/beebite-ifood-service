@@ -43,7 +43,7 @@ class PollIfoodEventsUseCaseTest {
     private IfoodCredential validCredential() {
         IfoodCredential cred = IfoodCredential.reconstitute(
                 UUID.randomUUID(), storeId, "cid", "enc-secret", "mid",
-                "valid-token", java.time.LocalDateTime.now().plusHours(1),
+                "valid-token", "refresh-token", "auth-code", java.time.LocalDateTime.now().plusHours(1),
                 true, java.time.LocalDateTime.now(), java.time.LocalDateTime.now()
         );
         return cred;
@@ -115,14 +115,14 @@ class PollIfoodEventsUseCaseTest {
     void shouldRenewTokenWhenExpiredBeforePolling() {
         IfoodCredential expired = IfoodCredential.reconstitute(
                 UUID.randomUUID(), storeId, "cid", "enc-secret", "mid",
-                "old-token", java.time.LocalDateTime.now().minusMinutes(1), // expirado
+                "old-token", "refresh-token", "auth-code", java.time.LocalDateTime.now().minusMinutes(1), // expirado
                 true, java.time.LocalDateTime.now(), java.time.LocalDateTime.now()
         );
         when(credentialRepository.findAllEnabled()).thenReturn(List.of(expired));
         // secretEncryptor descriptografa o enc-secret → plain-secret
         when(secretEncryptor.decrypt("enc-secret")).thenReturn("plain-secret");
-        when(authClient.authenticate("cid", "plain-secret")).thenReturn(
-                new IfoodTokenResponse("new-token", "bearer", 3600L));
+        when(authClient.refreshToken("cid", "plain-secret", "refresh-token")).thenReturn(
+                new IfoodTokenResponse("new-token", "bearer", 3600L, "new-refresh"));
         when(eventClient.pollEvents(anyString(), eq("mid"))).thenReturn(List.of());
 
         useCase.execute();

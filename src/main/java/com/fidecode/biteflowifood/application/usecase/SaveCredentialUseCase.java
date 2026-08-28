@@ -49,7 +49,7 @@ public class SaveCredentialUseCase {
         credential.setClientId(request.clientId());
         credential.setEncryptedClientSecret(encryptedSecret);
         credential.setMerchantId(request.merchantId());
-        credential.updateToken(tokenResponse.accessToken(), tokenResponse.expiresIn());
+        credential.updateToken(tokenResponse.accessToken(), tokenResponse.refreshToken(), tokenResponse.expiresIn());
 
         IfoodCredential saved = repository.save(credential);
 

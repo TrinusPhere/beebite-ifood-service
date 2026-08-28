@@ -2,6 +2,7 @@ package com.fidecode.biteflowifood.infrastructure.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fidecode.biteflowifood.application.dto.IfoodTokenResponse;
+import com.fidecode.biteflowifood.application.dto.IfoodUserCodeResponse;
 import com.fidecode.biteflowifood.application.port.IfoodAuthClient;
 import com.fidecode.biteflowifood.domain.shared.exception.IfoodAuthenticationException;
 import com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationException;
@@ -63,6 +64,75 @@ public class IfoodAuthRestClient implements IfoodAuthClient {
             }
 
             return objectMapper.readValue(response.body(), IfoodTokenResponse.class);
+
+        } catch (IfoodAuthenticationException | IfoodIntegrationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IfoodIntegrationException("Falha ao comunicar com endpoint de autenticação do iFood", e);
+        }
+    }
+
+    @Override
+    public IfoodUserCodeResponse generateUserCode(String clientId) {
+        String body = "clientId=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/authentication/v1.0/oauth/userCode"))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .timeout(Duration.ofSeconds(15))
+                .build();
+
+        return executeRequest(request, IfoodUserCodeResponse.class);
+    }
+
+    @Override
+    public IfoodTokenResponse exchangeAuthCode(String clientId, String clientSecret, String authorizationCode, String authorizationCodeVerifier) {
+        String body = "grantType=authorization_code"
+                + "&clientId=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
+                + "&clientSecret=" + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8)
+                + "&authorizationCode=" + URLEncoder.encode(authorizationCode, StandardCharsets.UTF_8)
+                + "&authorizationCodeVerifier=" + URLEncoder.encode(authorizationCodeVerifier, StandardCharsets.UTF_8);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + AUTH_PATH))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .timeout(Duration.ofSeconds(15))
+                .build();
+
+        return executeRequest(request, IfoodTokenResponse.class);
+    }
+
+    @Override
+    public IfoodTokenResponse refreshToken(String clientId, String clientSecret, String refreshToken) {
+        String body = "grantType=refresh_token"
+                + "&clientId=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
+                + "&clientSecret=" + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8)
+                + "&refreshToken=" + URLEncoder.encode(refreshToken, StandardCharsets.UTF_8);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + AUTH_PATH))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .timeout(Duration.ofSeconds(15))
+                .build();
+
+        return executeRequest(request, IfoodTokenResponse.class);
+    }
+
+    private <T> T executeRequest(HttpRequest request, Class<T> responseClass) {
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 401 || response.statusCode() == 403) {
+                throw new IfoodAuthenticationException("HTTP " + response.statusCode() + ": " + response.body());
+            }
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IfoodIntegrationException("HTTP " + response.statusCode() + ": " + response.body());
+            }
+
+            return objectMapper.readValue(response.body(), responseClass);
 
         } catch (IfoodAuthenticationException | IfoodIntegrationException e) {
             throw e;
