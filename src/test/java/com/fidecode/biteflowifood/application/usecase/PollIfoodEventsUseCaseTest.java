@@ -163,7 +163,7 @@ class PollIfoodEventsUseCaseTest {
                 orderId, "N4K7", null, Instant.now().toString(),
                 "DELIVERY", "IMMEDIATE",
                 new IfoodOrderDetails.IfoodMerchantRef("mid", "Lanchonete X"),
-                new IfoodOrderDetails.IfoodCustomer("cust-id", "João Silva", "+5511999999999", null, null),
+                new IfoodOrderDetails.IfoodCustomer("cust-id", "João Silva", new IfoodOrderDetails.IfoodPhone("+5511999999999", null, null), null, null),
                 List.of(new IfoodOrderDetails.IfoodItem("item-id", "X-Burger", 1,
                         BigDecimal.valueOf(25.90), BigDecimal.valueOf(25.90), null, List.of())),
                 BigDecimal.valueOf(25.90),  // subTotal

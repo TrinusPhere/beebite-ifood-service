@@ -45,10 +45,12 @@ public class PubSubInitializer {
     // Tópicos publicados pelo BiteFlow (para o serviço de integração consumir)
     private static final String TOPIC_BITEFLOW_STATUS_CHANGED      = "biteflow-order-status-changed";
     private static final String TOPIC_BITEFLOW_ORDER_CANCELLED      = "biteflow-order-cancelled";
+    private static final String TOPIC_BITEFLOW_CATALOG_CHANGED     = "biteflow-catalog-changed";
 
     // Subscriptions que este serviço consome
     private static final String SUB_BITEFLOW_STATUS_CHANGED = "biteflow-order-status-changed-sub";
     private static final String SUB_BITEFLOW_ORDER_CANCELLED = "biteflow-order-cancelled-sub";
+    private static final String SUB_BITEFLOW_CATALOG_CHANGED = "biteflow-catalog-changed-sub";
 
     // Subscriptions que o BiteFlow consome (criamos aqui para facilitar ambiente local)
     private static final String SUB_IFOOD_ORDER_PLACED = "ifood-order-placed-sub";
@@ -102,6 +104,7 @@ public class PubSubInitializer {
             createTopicIfNotExists(client, TOPIC_IFOOD_ORDER_STATUS_CHANGED);
             createTopicIfNotExists(client, TOPIC_BITEFLOW_STATUS_CHANGED);
             createTopicIfNotExists(client, TOPIC_BITEFLOW_ORDER_CANCELLED);
+            createTopicIfNotExists(client, TOPIC_BITEFLOW_CATALOG_CHANGED);
         }
     }
 
@@ -117,6 +120,7 @@ public class PubSubInitializer {
         try (SubscriptionAdminClient client = SubscriptionAdminClient.create(settings)) {
             createSubscriptionIfNotExists(client, SUB_BITEFLOW_STATUS_CHANGED, TOPIC_BITEFLOW_STATUS_CHANGED);
             createSubscriptionIfNotExists(client, SUB_BITEFLOW_ORDER_CANCELLED, TOPIC_BITEFLOW_ORDER_CANCELLED);
+            createSubscriptionIfNotExists(client, SUB_BITEFLOW_CATALOG_CHANGED, TOPIC_BITEFLOW_CATALOG_CHANGED);
             createSubscriptionIfNotExists(client, SUB_IFOOD_ORDER_PLACED, TOPIC_IFOOD_ORDER_PLACED);
             createSubscriptionIfNotExists(client, SUB_IFOOD_ORDER_STATUS_CHANGED, TOPIC_IFOOD_ORDER_STATUS_CHANGED);
         }
