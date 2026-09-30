@@ -1,6 +1,7 @@
 package com.fidecode.biteflowifood.infrastructure.http;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fidecode.biteflowifood.application.dto.biteflow.BiteflowCatalogRequest.*;
 import com.fidecode.biteflowifood.application.dto.biteflow.BiteflowCatalogResponse.*;
@@ -15,6 +16,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -31,6 +33,16 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
 
     @Inject
     ObjectMapper objectMapper;
+
+    @jakarta.ws.rs.core.Context
+    jakarta.ws.rs.core.HttpHeaders httpHeaders;
+
+    private String getAuthHeader() {
+        if (httpHeaders != null) {
+            return httpHeaders.getHeaderString("Authorization");
+        }
+        return null;
+    }
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -59,12 +71,16 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
     @Override
     public ProductResponse getProduct(UUID storeId, UUID productId) {
         try {
-            HttpRequest request = HttpRequest.newBuilder()
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + PRODUCTS_PATH + "/" + productId))
                     .header("X-Store-Id", storeId.toString())
                     .GET()
-                    .timeout(Duration.ofSeconds(15))
-                    .build();
+                    .timeout(Duration.ofSeconds(15));
+            
+            String authHeader = getAuthHeader();
+            if (authHeader != null) requestBuilder.header("Authorization", authHeader);
+
+            HttpRequest request = requestBuilder.build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
@@ -72,8 +88,10 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
             }
             if (response.statusCode() == 404) return null;
             throw new IfoodIntegrationException("Erro ao buscar produto no BiteFlow: HTTP " + response.statusCode());
+        } catch (IfoodIntegrationException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IfoodIntegrationException("Erro ao chamar API do BiteFlow (GET Produto)", e);
+            throw new IfoodIntegrationException("Erro ao chamar API do BiteFlow (GET Produto) -> " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }
     }
 
@@ -95,44 +113,80 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
         try {
             String bodyJson = objectMapper.writeValueAsString(body);
 
-            HttpRequest request = HttpRequest.newBuilder()
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + path))
                     .header("Content-Type", "application/json")
-                    // .header("Authorization", "Bearer " + getInternalToken()) // TODO: implement service-to-service auth
-                    .header("X-Store-Id", storeId.toString()) // Temporary way if needed or via token
+                    .header("X-Store-Id", storeId.toString())
                     .POST(HttpRequest.BodyPublishers.ofString(bodyJson))
-                    .timeout(Duration.ofSeconds(15))
-                    .build();
+                    .timeout(Duration.ofSeconds(15));
+
+            String authHeader = getAuthHeader();
+            if (authHeader != null) requestBuilder.header("Authorization", authHeader);
+
+            HttpRequest request = requestBuilder.build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                // The actual Biteflow API returns the ID in the response (or a response object).
-                // Let's assume the response has an 'id' field, or we can just parse it if we had the DTO.
-                return response.body(); // returning the whole JSON for simplicity in this implementation
+                // The actual Biteflow API returns the created DTO with an 'id' field.
+                JsonNode root = objectMapper.readTree(response.body());
+                if (root.has("id")) {
+                    return root.get("id").asText();
+                }
+                return response.body();
             }
             throw new IfoodIntegrationException("Erro ao criar entidade no BiteFlow: HTTP " + response.statusCode());
+        } catch (IfoodIntegrationException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IfoodIntegrationException("Erro ao chamar API do BiteFlow (POST)", e);
+            throw new IfoodIntegrationException("Erro ao chamar API do BiteFlow (POST) -> " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }
     }
 
     private <T> List<T> getList(UUID storeId, String path, TypeReference<List<T>> typeRef) {
         try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + path))
-                    .header("X-Store-Id", storeId.toString())
-                    .GET()
-                    .timeout(Duration.ofSeconds(15))
-                    .build();
+            List<T> allResults = new ArrayList<>();
+            int page = 0;
+            int pageSize = 50;
+            boolean hasMore = true;
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() == 200) {
-                return objectMapper.readValue(response.body(), typeRef);
+            while (hasMore) {
+                String separator = path.contains("?") ? "&" : "?";
+                String paginatedPath = path + separator + "page=" + page + "&size=" + pageSize;
+
+                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl + paginatedPath))
+                        .header("X-Store-Id", storeId.toString())
+                        .GET()
+                        .timeout(Duration.ofSeconds(15));
+
+                String authHeader = getAuthHeader();
+                if (authHeader != null) requestBuilder.header("Authorization", authHeader);
+
+                HttpRequest request = requestBuilder.build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonNode root = objectMapper.readTree(response.body());
+                    JsonNode contentNode = root.has("content") ? root.get("content") : root;
+                    List<T> pageContent = objectMapper.readValue(contentNode.toString(), typeRef);
+                    allResults.addAll(pageContent);
+
+                    // Check if there are more pages
+                    int totalPages = root.has("totalPages") ? root.get("totalPages").asInt() : 1;
+                    page++;
+                    hasMore = page < totalPages;
+                } else if (response.statusCode() == 204 || response.statusCode() == 404) {
+                    return allResults;
+                } else {
+                    throw new IfoodIntegrationException("Erro ao buscar dados no BiteFlow: HTTP " + response.statusCode());
+                }
             }
-            if (response.statusCode() == 204 || response.statusCode() == 404) return Collections.emptyList();
-            throw new IfoodIntegrationException("Erro ao buscar dados no BiteFlow: HTTP " + response.statusCode());
+
+            return allResults;
+        } catch (IfoodIntegrationException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IfoodIntegrationException("Erro ao chamar API do BiteFlow (GET)", e);
+            throw new IfoodIntegrationException("Erro ao chamar API do BiteFlow (GET) -> " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }
     }
 }

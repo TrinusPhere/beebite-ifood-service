@@ -1,5 +1,6 @@
 package com.fidecode.biteflowifood.application.dto.catalog;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -7,7 +8,7 @@ public class IfoodCatalogResponse {
 
     public record IfoodCatalog(
             String catalogId,
-            String context,
+            List<String> context,
             String status) {
     }
 
@@ -16,6 +17,14 @@ public class IfoodCatalogResponse {
             String name,
             String status,
             String template) {
+    }
+
+    public record IfoodCategoryItemsResponse(
+            String categoryId,
+            List<IfoodItemData> items,
+            List<IfoodProduct> products,
+            List<IfoodOptionGroup> optionGroups,
+            List<IfoodOption> options) {
     }
 
     public record IfoodItemFull(
@@ -32,14 +41,16 @@ public class IfoodCatalogResponse {
             String status,
             IfoodPrice price,
             String externalCode,
-            List<IfoodContextModifier> contextModifiers) {
+            String productId,
+            JsonNode contextModifiers) {
     }
 
     public record IfoodProduct(
             String id,
             String name,
             String description,
-            String imagePath) {
+            String imagePath,
+            JsonNode optionGroups) {
     }
 
     public record IfoodOptionGroup(
@@ -49,7 +60,7 @@ public class IfoodCatalogResponse {
             String associationType,
             int min,
             int max,
-            List<String> optionIds) {
+            JsonNode optionIds) {
     }
 
     public record IfoodOption(

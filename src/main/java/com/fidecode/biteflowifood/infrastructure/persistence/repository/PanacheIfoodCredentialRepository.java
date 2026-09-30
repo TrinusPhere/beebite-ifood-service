@@ -32,7 +32,11 @@ public class PanacheIfoodCredentialRepository implements IfoodCredentialReposito
     @Transactional
     public IfoodCredential save(IfoodCredential credential) {
         IfoodCredentialEntity entity = IfoodCredentialMapper.toEntity(credential);
-        panacheRepo.persist(entity);
+        if (entity.getId() == null) {
+            panacheRepo.persist(entity);
+        } else {
+            entity = panacheRepo.getEntityManager().merge(entity);
+        }
         return IfoodCredentialMapper.toDomain(entity);
     }
 

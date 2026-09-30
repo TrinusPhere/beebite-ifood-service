@@ -11,14 +11,44 @@ public class IfoodCatalogRequest {
             String template) {
     }
 
-    public record IfoodCreateItemRequest(
+    /**
+     * Dados do item principal no iFood Catalog v2.0.
+     * Usado no PUT /merchants/{merchantId}/items
+     */
+    public record IfoodItemData(
+            String id,
+            String productId,
+            String name,
+            String description,
             String type,
             String categoryId,
+            String status,
+            IfoodPrice price,
+            String externalCode,
+            String serves) {
+    }
+
+    public record IfoodProductData(
+            String id,
             String name,
             String description,
             String externalCode,
-            String status,
-            IfoodPrice price,
+            List<IfoodOptionGroupReference> optionGroups) {
+    }
+
+    public record IfoodOptionGroupReference(
+            String id,
+            int min,
+            int max) {
+    }
+
+    /**
+     * Request para criação/atualização de item no iFood Catalog v2.0.
+     * PUT /catalog/v2.0/merchants/{merchantId}/items
+     */
+    public record IfoodCreateProductRequest(
+            IfoodItemData item,
+            List<IfoodProductData> products,
             List<IfoodOptionGroup> optionGroups,
             List<IfoodOption> options) {
     }
@@ -37,9 +67,10 @@ public class IfoodCatalogRequest {
     }
 
     public record IfoodOptionGroup(
+            String id,
             String name,
             String optionGroupType,
-            String associationType,
+            String status,
             int min,
             int max,
             List<String> optionIds) {
@@ -47,9 +78,9 @@ public class IfoodCatalogRequest {
 
     public record IfoodOption(
             String id,
-            String externalCode,
-            IfoodPrice price,
             String status,
-            String name) {
+            String productId,
+            IfoodPrice price,
+            String externalCode) {
     }
 }

@@ -21,7 +21,7 @@ import java.util.List;
 public class IfoodCatalogRestClient implements IfoodCatalogClient {
 
     private static final String CATALOGS_PATH = "/catalog/v2.0/merchants/%s/catalogs";
-    private static final String CATEGORIES_PATH = "/catalog/v2.0/merchants/%s/categories";
+    private static final String CATEGORIES_PATH = "/catalog/v2.0/merchants/%s/catalogs/%s/categories";
     private static final String CATEGORY_ITEMS_PATH = "/catalog/v2.0/merchants/%s/categories/%s/items";
     private static final String ITEM_PATH = "/catalog/v2.0/merchants/%s/items/%s";
     private static final String SELLABLE_ITEMS_PATH = "/catalog/v2.0/merchants/%s/sellableItems";
@@ -43,12 +43,32 @@ public class IfoodCatalogRestClient implements IfoodCatalogClient {
 
     @Override
     public List<IfoodCategory> listCategories(String token, String merchantId) {
-        return getList(token, String.format(CATEGORIES_PATH, merchantId), new TypeReference<>() {});
+        List<IfoodCatalog> catalogs = listCatalogs(token, merchantId);
+        if (catalogs == null || catalogs.isEmpty()) return Collections.emptyList();
+        String catalogId = catalogs.get(0).catalogId();
+        return getList(token, String.format(CATEGORIES_PATH, merchantId, catalogId), new TypeReference<>() {});
     }
 
     @Override
-    public List<IfoodItemFull> listCategoryItems(String token, String merchantId, String categoryId) {
-        return getList(token, String.format(CATEGORY_ITEMS_PATH, merchantId, categoryId), new TypeReference<>() {});
+    public IfoodCategoryItemsResponse listCategoryItems(String token, String merchantId, String categoryId) {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + String.format(CATEGORY_ITEMS_PATH, merchantId, categoryId)))
+                .header("Authorization", "Bearer " + token)
+                .GET()
+                .timeout(Duration.ofSeconds(15))
+                .build();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                return objectMapper.readValue(response.body(), IfoodCategoryItemsResponse.class);
+            }
+            if (response.statusCode() == 404) return null;
+            throw new IfoodIntegrationException("Erro ao buscar items da categoria: HTTP " + response.statusCode() + " | " + response.body());
+        } catch (IfoodIntegrationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IfoodIntegrationException("Erro ao chamar API de Catálogo -> " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -91,9 +111,11 @@ public class IfoodCatalogRestClient implements IfoodCatalogClient {
                 return objectMapper.readValue(response.body(), typeReference);
             }
             if (response.statusCode() == 204 || response.statusCode() == 404) return Collections.emptyList();
-            throw new IfoodIntegrationException("Erro ao buscar catálogo: HTTP " + response.statusCode());
+            throw new IfoodIntegrationException("Erro ao buscar catálogo: HTTP " + response.statusCode() + " | " + response.body());
+        } catch (IfoodIntegrationException e) {
+            throw e;
         } catch (Exception e) {
-            throw new IfoodIntegrationException("Erro ao chamar API de Catálogo", e);
+            throw new IfoodIntegrationException("Erro ao chamar API de Catálogo -> " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
         }
     }
 }

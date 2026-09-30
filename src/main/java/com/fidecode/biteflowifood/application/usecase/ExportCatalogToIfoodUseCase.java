@@ -6,8 +6,10 @@ import com.fidecode.biteflowifood.application.port.BiteflowCatalogClient;
 import com.fidecode.biteflowifood.application.port.IfoodCatalogSyncClient;
 import com.fidecode.biteflowifood.domain.catalog.entity.CatalogMapping;
 import com.fidecode.biteflowifood.domain.catalog.repository.CatalogMappingRepository;
+import com.fidecode.biteflowifood.domain.shared.exception.BusinessRuleException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 
 import java.util.List;
 import java.util.Optional;
@@ -16,6 +18,8 @@ import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class ExportCatalogToIfoodUseCase {
+
+    private static final Logger LOG = Logger.getLogger(ExportCatalogToIfoodUseCase.class);
 
     @Inject
     BiteflowCatalogClient biteflowCatalogClient;
@@ -26,67 +30,77 @@ public class ExportCatalogToIfoodUseCase {
     @Inject
     CatalogMappingRepository mappingRepository;
 
+    @jakarta.transaction.Transactional
     public void execute(UUID storeId, String merchantId, String token) {
+        LOG.infof("[EXPORT] Iniciando export para storeId=%s, merchantId=%s", storeId, merchantId);
+
+        // 0. Obter o catalogId do iFood (necessário para criar categorias)
+        List<String> catalogIds = ifoodCatalogSyncClient.listCatalogIds(token, merchantId);
+        if (catalogIds.isEmpty()) {
+            throw new BusinessRuleException("Nenhum catálogo encontrado no iFood para o merchantId: " + merchantId);
+        }
+        String catalogId = catalogIds.get(0); // Usa o primeiro catálogo disponível
+        LOG.infof("[EXPORT] Usando catalogId=%s", catalogId);
+
         // 1. Obter todas as categorias do BiteFlow
         List<CategoryResponse> categories = biteflowCatalogClient.listCategories(storeId);
+        LOG.infof("[EXPORT] Categorias encontradas no BiteFlow: %d", categories.size());
+
         List<ModifierGroupResponse> modifierGroups = biteflowCatalogClient.listModifierGroups(storeId);
+        LOG.infof("[EXPORT] Modifier groups encontrados no BiteFlow: %d", modifierGroups.size());
 
         for (CategoryResponse category : categories) {
+            LOG.infof("[EXPORT] Processando categoria: %s (id=%s)", category.name(), category.id());
+
             // Verificar se a categoria já está mapeada
             Optional<CatalogMapping> existingCatMapping = mappingRepository.findByBiteflowIdAndStoreId(UUID.fromString(category.id()), storeId);
             String ifoodCategoryId;
 
             if (existingCatMapping.isEmpty()) {
-                // Criar no iFood
+                // Criar no iFood (agora com catalogId)
                 IfoodCreateCategoryRequest catReq = CatalogExportMapper.toIfoodCategory(category);
-                ifoodCategoryId = ifoodCatalogSyncClient.createCategory(token, merchantId, catReq);
+                LOG.infof("[EXPORT] Criando categoria no iFood: %s (catalogId=%s)", category.name(), catalogId);
+                ifoodCategoryId = ifoodCatalogSyncClient.createCategory(token, merchantId, catalogId, catReq);
+                LOG.infof("[EXPORT] Categoria criada no iFood com id=%s", ifoodCategoryId);
 
                 mappingRepository.save(new CatalogMapping(storeId, ifoodCategoryId, UUID.fromString(category.id()), "CATEGORY"));
             } else {
                 ifoodCategoryId = existingCatMapping.get().getIfoodId();
+                LOG.infof("[EXPORT] Categoria já mapeada: ifoodId=%s", ifoodCategoryId);
             }
 
             // 2. Para cada produto da categoria
             List<ProductResponse> products = biteflowCatalogClient.listProducts(storeId, category.id());
-            
+            LOG.infof("[EXPORT] Produtos da categoria %s: %d", category.name(), products.size());
+
             for (ProductResponse product : products) {
+                LOG.infof("[EXPORT] Processando produto: %s (id=%s)", product.name(), product.id());
+
                 Optional<CatalogMapping> existingProdMapping = mappingRepository.findByBiteflowIdAndStoreId(UUID.fromString(product.id()), storeId);
-                
+
                 if (existingProdMapping.isEmpty()) {
                     // Mapeia os modifiers do produto
                     List<ModifierGroupResponse> productGroups = modifierGroups.stream()
                             .filter(g -> product.modifierGroupIds() != null && product.modifierGroupIds().contains(g.id()))
                             .collect(Collectors.toList());
 
-                    // TODO: Mapear id da opção para id do iFood Option
-                    
-                    IfoodCreateItemRequest itemReq = CatalogExportMapper.toIfoodItem(product, productGroups);
-                    
-                    // Adiciona o categoryId que acabamos de pegar
-                    itemReq = new IfoodCreateItemRequest(
-                            itemReq.type(),
-                            ifoodCategoryId,
-                            itemReq.name(),
-                            itemReq.description(),
-                            itemReq.externalCode(),
-                            itemReq.status(),
-                            itemReq.price(),
-                            itemReq.optionGroups(),
-                            itemReq.options()
-                    );
-                    
-                    String ifoodItemId = ifoodCatalogSyncClient.createItem(token, merchantId, itemReq);
+                    IfoodCreateProductRequest productReq = CatalogExportMapper.toIfoodProduct(product, productGroups, ifoodCategoryId);
 
-                    mappingRepository.save(new CatalogMapping(storeId, ifoodItemId, UUID.fromString(product.id()), "PRODUCT"));
+                    LOG.infof("[EXPORT] Criando produto no iFood: %s", product.name());
+                    String ifoodProductId = ifoodCatalogSyncClient.createProduct(token, merchantId, productReq);
+                    LOG.infof("[EXPORT] Produto criado no iFood com id=%s", ifoodProductId);
+
+                    mappingRepository.save(new CatalogMapping(storeId, ifoodProductId, UUID.fromString(product.id()), "PRODUCT"));
                 } else {
-                    // Já existe. Em um cenário real de export, talvez pudesse fazer UPDATE (PATCH) dos dados e do status
-                    String ifoodItemId = existingProdMapping.get().getIfoodId();
-                    
-                    ifoodCatalogSyncClient.updateItemStatus(token, merchantId, ifoodItemId, new IfoodUpdateStatusRequest(product.status()));
-                    
-                    // TODO: Update Price if it differs
+                    String ifoodProductId = existingProdMapping.get().getIfoodId();
+                    LOG.infof("[EXPORT] Produto já mapeado: ifoodId=%s, atualizando status", ifoodProductId);
+
+                    ifoodCatalogSyncClient.updateProductStatus(token, merchantId, ifoodProductId,
+                            new IfoodUpdateStatusRequest(product.status()));
                 }
             }
         }
+
+        LOG.infof("[EXPORT] Export concluído para storeId=%s", storeId);
     }
 }

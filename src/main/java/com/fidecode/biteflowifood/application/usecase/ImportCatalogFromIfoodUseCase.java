@@ -11,6 +11,7 @@ import com.fidecode.biteflowifood.domain.shared.exception.BusinessRuleException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import jakarta.transaction.Transactional;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,6 +32,7 @@ public class ImportCatalogFromIfoodUseCase {
     @Inject
     ImageStoragePort imageStoragePort;
 
+    @Transactional
     public void execute(UUID storeId, String merchantId, String token) {
         // 1. Obtém as categorias do iFood
         List<IfoodCategory> categories = ifoodCatalogClient.listCategories(token, merchantId);
@@ -52,12 +54,52 @@ public class ImportCatalogFromIfoodUseCase {
             }
 
             // 2. Obtém os itens desta categoria
-            List<IfoodItemFull> items = ifoodCatalogClient.listCategoryItems(token, merchantId, category.id());
+            IfoodCategoryItemsResponse categoryItems = ifoodCatalogClient.listCategoryItems(token, merchantId, category.id());
+            if (categoryItems == null || categoryItems.items() == null) continue;
 
-            for (IfoodItemFull item : items) {
-                Optional<CatalogMapping> existingProdMapping = mappingRepository.findByIfoodIdAndStoreId(item.item().id(), storeId);
+            for (IfoodItemData itemData : categoryItems.items()) {
+                Optional<CatalogMapping> existingProdMapping = mappingRepository.findByIfoodIdAndStoreId(itemData.id(), storeId);
 
                 if (existingProdMapping.isEmpty()) {
+                    // Encontra os produtos ligados a este item
+                    List<IfoodProduct> itemProducts = categoryItems.products() != null ?
+                            categoryItems.products().stream()
+                                .filter(p -> p.id().equals(itemData.id()) || p.id().equals(itemData.productId()))
+                                .toList() : List.of();
+
+                    // Descobre quais optionGroups pertencem a este produto
+                    List<IfoodOptionGroup> itemOptionGroups = new java.util.ArrayList<>();
+                    if (!itemProducts.isEmpty() && categoryItems.optionGroups() != null) {
+                        com.fasterxml.jackson.databind.JsonNode optionGroupsNode = itemProducts.get(0).optionGroups();
+                        if (optionGroupsNode != null && optionGroupsNode.isArray()) {
+                            java.util.Set<String> groupIds = new java.util.HashSet<>();
+                            for (com.fasterxml.jackson.databind.JsonNode node : optionGroupsNode) {
+                                groupIds.add(node.asText());
+                            }
+                            itemOptionGroups = categoryItems.optionGroups().stream().filter(g -> groupIds.contains(g.id())).toList();
+                        } else if (optionGroupsNode != null && optionGroupsNode.isTextual() && !optionGroupsNode.asText().isEmpty()) {
+                            itemOptionGroups = categoryItems.optionGroups().stream().filter(g -> g.id().equals(optionGroupsNode.asText())).toList();
+                        }
+                    }
+
+                    // Descobre quais options pertencem aos optionGroups deste item
+                    List<IfoodOption> itemOptions = new java.util.ArrayList<>();
+                    if (categoryItems.options() != null && !itemOptionGroups.isEmpty()) {
+                        java.util.Set<String> optionIds = new java.util.HashSet<>();
+                        for (IfoodOptionGroup group : itemOptionGroups) {
+                            if (group.optionIds() != null && group.optionIds().isArray()) {
+                                for (com.fasterxml.jackson.databind.JsonNode node : group.optionIds()) {
+                                    optionIds.add(node.asText());
+                                }
+                            } else if (group.optionIds() != null && group.optionIds().isTextual() && !group.optionIds().asText().isEmpty()) {
+                                optionIds.add(group.optionIds().asText());
+                            }
+                        }
+                        itemOptions = categoryItems.options().stream().filter(o -> optionIds.contains(o.id())).toList();
+                    }
+
+                    IfoodItemFull item = new IfoodItemFull(itemData, itemProducts, itemOptionGroups, itemOptions);
+
                     // Processa Option Groups (Modificadores) primeiro
                     List<String> modifierGroupIds = processModifierGroups(storeId, merchantId, token, item);
 

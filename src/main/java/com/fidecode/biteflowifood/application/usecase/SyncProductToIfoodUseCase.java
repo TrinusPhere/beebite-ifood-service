@@ -35,6 +35,8 @@ public class SyncProductToIfoodUseCase {
         this.credentialRepository = credentialRepository;
     }
 
+    @jakarta.enterprise.context.control.ActivateRequestContext
+    @jakarta.transaction.Transactional
     public void execute(BiteflowCatalogChangedEvent event) {
         LOG.infof("[SYNC-TO-IFOOD] Processando evento: %s para o produto %s", event.changeType(), event.productId());
 
@@ -60,8 +62,8 @@ public class SyncProductToIfoodUseCase {
 
         if ("PRODUCT_DELETED".equals(event.changeType())) {
             // Se foi deletado no PDV, vamos pausar no iFood
-            ifoodCatalogSyncClient.updateItemStatus(token, merchantId, mapping.getIfoodId(),
-                    new IfoodUpdateStatusRequest("UNAVAILABLE")); // assumindo UNAVAILABLE
+            ifoodCatalogSyncClient.updateProductStatus(token, merchantId, mapping.getIfoodId(),
+                    new IfoodUpdateStatusRequest("UNAVAILABLE"));
             LOG.infof("[SYNC-TO-IFOOD] Produto %s pausado no iFood devido a exclusão no PDV", event.productId());
             return;
         }
@@ -75,7 +77,7 @@ public class SyncProductToIfoodUseCase {
         // Atualizar preço
         if (product.price() != null) {
             try {
-                ifoodCatalogSyncClient.updateItemPrice(token, merchantId, mapping.getIfoodId(),
+                ifoodCatalogSyncClient.updateProductPrice(token, merchantId, mapping.getIfoodId(),
                         new IfoodUpdatePriceRequest(product.price()));
                 LOG.infof("[SYNC-TO-IFOOD] Preço atualizado no iFood para produto %s", event.productId());
             } catch (Exception e) {
@@ -87,7 +89,7 @@ public class SyncProductToIfoodUseCase {
         if (product.status() != null) {
             String ifoodStatus = "AVAILABLE".equals(product.status()) ? "AVAILABLE" : "UNAVAILABLE";
             try {
-                ifoodCatalogSyncClient.updateItemStatus(token, merchantId, mapping.getIfoodId(),
+                ifoodCatalogSyncClient.updateProductStatus(token, merchantId, mapping.getIfoodId(),
                         new IfoodUpdateStatusRequest(ifoodStatus));
                 LOG.infof("[SYNC-TO-IFOOD] Status atualizado (%s) no iFood para produto %s", ifoodStatus, event.productId());
             } catch (Exception e) {

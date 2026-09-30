@@ -14,7 +14,7 @@ public class BusinessRuleException extends DomainException {
     }
 
     @Override
-    public Response.Status getHttpStatus() { return Response.Status.fromStatusCode(422); }
+    public Response.Status getHttpStatus() { return Response.Status.BAD_REQUEST; }
 
     @Override
     public String getErrorType() { return "BUSINESS_RULE_VIOLATION"; }

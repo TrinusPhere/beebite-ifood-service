@@ -101,11 +101,12 @@ public final class CatalogSyncMapper {
     }
 
     public static String mapModifierType(String optionGroupType) {
-        if (optionGroupType == null) return "SPECIFICATION";
+        if (optionGroupType == null) return "OFFER_UNIT";
         return switch (optionGroupType) {
+            case "MIN_MAX" -> "SPECIFICATION";
             case "ADDITIONAL" -> "OFFER_UNIT";
             case "CUTLERY" -> "CUTLERY";
-            default -> "SPECIFICATION";
+            default -> "OFFER_UNIT";
         };
     }
 

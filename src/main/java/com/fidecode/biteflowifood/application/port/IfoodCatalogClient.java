@@ -6,7 +6,7 @@ import java.util.List;
 public interface IfoodCatalogClient {
     List<IfoodCatalog> listCatalogs(String token, String merchantId);
     List<IfoodCategory> listCategories(String token, String merchantId);
-    List<IfoodItemFull> listCategoryItems(String token, String merchantId, String categoryId);
+    IfoodCategoryItemsResponse listCategoryItems(String token, String merchantId, String categoryId);
     IfoodItemFull getItem(String token, String merchantId, String itemId);
     List<IfoodItemData> listSellableItems(String token, String merchantId);
 }
