@@ -61,8 +61,9 @@ public final class CatalogSyncMapper {
         String semanticType = mapModifierType(group.optionGroupType());
 
         List<ModifierOptionDto> options = new ArrayList<>();
-        if (group.optionIds() != null && fullItem.options() != null) {
-            for (String optId : group.optionIds()) {
+        if (group.optionIds() != null && group.optionIds().isArray() && fullItem.options() != null) {
+            for (com.fasterxml.jackson.databind.JsonNode optNode : group.optionIds()) {
+                String optId = optNode.asText();
                 IfoodOption ifoodOpt = fullItem.options().stream()
                         .filter(o -> o.id().equals(optId))
                         .findFirst().orElse(null);

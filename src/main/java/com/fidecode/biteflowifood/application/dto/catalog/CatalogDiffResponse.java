@@ -14,7 +14,14 @@ public record CatalogDiffResponse(
     public record CatalogDiffEntry(
             String diffStatus,           // MATCH, CONFLICT, BITEFLOW_ONLY, IFOOD_ONLY
             ProductResponse biteflowItem, // null se IFOOD_ONLY
-            IfoodCatalogResponse.IfoodProduct ifoodItem, // null se BITEFLOW_ONLY
+            IfoodItemPresentation ifoodItem, // null se BITEFLOW_ONLY
             List<String> conflictFields  // ["price", "name", "status"] se CONFLICT
+    ) {}
+
+    public record IfoodItemPresentation(
+            String id, 
+            String name, 
+            IfoodCatalogResponse.IfoodPrice price, 
+            String status
     ) {}
 }

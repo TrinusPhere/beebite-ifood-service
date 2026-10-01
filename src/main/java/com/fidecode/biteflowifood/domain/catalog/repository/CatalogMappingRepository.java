@@ -13,4 +13,5 @@ public interface CatalogMappingRepository {
     Optional<CatalogMapping> findByBiteflowIdAndStoreId(UUID biteflowId, UUID storeId);
     List<CatalogMapping> findByStoreId(UUID storeId);
     void deleteByStoreId(UUID storeId);
+    void delete(CatalogMapping mapping);
 }

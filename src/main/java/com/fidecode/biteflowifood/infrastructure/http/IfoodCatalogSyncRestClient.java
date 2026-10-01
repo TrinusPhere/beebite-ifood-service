@@ -87,18 +87,21 @@ public class IfoodCatalogSyncRestClient implements IfoodCatalogSyncClient {
     @Override
     public String createProduct(String token, String merchantId, IfoodCreateProductRequest request) {
         // iFood v2.0 usa PUT /items para criação/atualização (idempotente)
-        return put(token, String.format(ITEMS_PATH, merchantId), request);
+        put(token, String.format(ITEMS_PATH, merchantId), request);
+        return request.item().id(); // Retorna o ID que nós mesmos geramos/enviamos
     }
 
     @Override
-    public void updateProductPrice(String token, String merchantId, String productId, IfoodUpdatePriceRequest request) {
-        patch(token, String.format(ITEM_BY_ID_PATH, merchantId, productId), request);
+    public void updateProductPrice(String token, String merchantId, String itemId, IfoodUpdatePriceRequest request) {
+        patch(token, String.format(ITEM_BY_ID_PATH, merchantId, itemId), request);
     }
 
     @Override
-    public void updateProductStatus(String token, String merchantId, String productId, IfoodUpdateStatusRequest request) {
-        patch(token, String.format(ITEM_BY_ID_PATH, merchantId, productId), request);
+    public void updateProductStatus(String token, String merchantId, String itemId, IfoodUpdateStatusRequest request) {
+        patch(token, String.format(ITEM_BY_ID_PATH, merchantId, itemId), request);
     }
+
+
 
     private String put(String token, String path, Object body) {
         String fullUrl = baseUrl + path;

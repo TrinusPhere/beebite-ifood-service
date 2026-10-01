@@ -61,6 +61,12 @@ public class IfoodCatalogRequest {
             String status) {
     }
 
+    public record IfoodUpdateProductRequest(
+            String name,
+            String description,
+            String externalCode) {
+    }
+
     public record IfoodPrice(
             BigDecimal value,
             BigDecimal originalValue) {

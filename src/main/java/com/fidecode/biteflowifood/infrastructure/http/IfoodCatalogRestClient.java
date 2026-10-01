@@ -60,6 +60,7 @@ public class IfoodCatalogRestClient implements IfoodCatalogClient {
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
+                System.out.println("IFOOD RESPONSE listCategoryItems: " + response.body());
                 return objectMapper.readValue(response.body(), IfoodCategoryItemsResponse.class);
             }
             if (response.statusCode() == 404) return null;

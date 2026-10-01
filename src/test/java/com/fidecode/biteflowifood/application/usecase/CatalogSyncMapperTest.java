@@ -24,8 +24,8 @@ class CatalogSyncMapperTest {
     @Test
     void shouldMapProductCorrectly() {
         IfoodPrice price = new IfoodPrice(new BigDecimal("25.50"), null);
-        IfoodItemData data = new IfoodItemData("item-1", "DEFAULT", "cat-1", "AVAILABLE", price, "PDV-123", List.of());
-        IfoodProduct prod = new IfoodProduct("prod-1", "X-Burger", "Pão, carne e queijo", "http://image.png");
+        IfoodItemData data = new IfoodItemData("item-1", "DEFAULT", "cat-1", "AVAILABLE", price, "PDV-123", "prod-1", null);
+        IfoodProduct prod = new IfoodProduct("prod-1", "X-Burger", "Pão, carne e queijo", "http://image.png", null);
         IfoodItemFull fullItem = new IfoodItemFull(data, List.of(prod), List.of(), List.of());
 
         CreateProductRequest request = CatalogSyncMapper.toCreateProductRequest(fullItem, "DEFAULT");
@@ -44,9 +44,12 @@ class CatalogSyncMapperTest {
 
     @Test
     void shouldMapModifierGroupCorrectly() {
-        IfoodOptionGroup group = new IfoodOptionGroup("group-1", "Escolha a bebida", "MIN_MAX", "MAIN", 1, 1, List.of("opt-1"));
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ArrayNode optionIds = mapper.createArrayNode();
+        optionIds.add("opt-1");
+        IfoodOptionGroup group = new IfoodOptionGroup("group-1", "Escolha a bebida", "MIN_MAX", "MAIN", 1, 1, optionIds);
         IfoodOption opt1 = new IfoodOption("opt-1", "prod-2", new IfoodPrice(new BigDecimal("5.00"), null), "AVAILABLE", "PDV-456");
-        IfoodProduct prod2 = new IfoodProduct("prod-2", "Coca Cola", null, null);
+        IfoodProduct prod2 = new IfoodProduct("prod-2", "Coca Cola", null, null, null);
         IfoodItemFull fullItem = new IfoodItemFull(null, List.of(prod2), List.of(group), List.of(opt1));
 
         CreateModifierGroupRequest request = CatalogSyncMapper.toCreateModifierGroupRequest(group, fullItem);

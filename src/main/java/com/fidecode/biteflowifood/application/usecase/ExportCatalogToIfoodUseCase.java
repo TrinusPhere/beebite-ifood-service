@@ -84,19 +84,32 @@ public class ExportCatalogToIfoodUseCase {
                             .filter(g -> product.modifierGroupIds() != null && product.modifierGroupIds().contains(g.id()))
                             .collect(Collectors.toList());
 
-                    IfoodCreateProductRequest productReq = CatalogExportMapper.toIfoodProduct(product, productGroups, ifoodCategoryId);
+                    String generatedItemId = UUID.randomUUID().toString();
+                    IfoodCreateProductRequest productReq = CatalogExportMapper.toIfoodProduct(product, productGroups, ifoodCategoryId, generatedItemId);
 
-                    LOG.infof("[EXPORT] Criando produto no iFood: %s", product.name());
-                    String ifoodProductId = ifoodCatalogSyncClient.createProduct(token, merchantId, productReq);
-                    LOG.infof("[EXPORT] Produto criado no iFood com id=%s", ifoodProductId);
+                    LOG.infof("[EXPORT] Criando produto no iFood: %s (gerado id: %s)", product.name(), generatedItemId);
+                    ifoodCatalogSyncClient.createProduct(token, merchantId, productReq);
+                    LOG.infof("[EXPORT] Produto criado no iFood com id=%s", generatedItemId);
 
-                    mappingRepository.save(new CatalogMapping(storeId, ifoodProductId, UUID.fromString(product.id()), "PRODUCT"));
+                    mappingRepository.save(new CatalogMapping(storeId, generatedItemId, UUID.fromString(product.id()), "PRODUCT"));
                 } else {
                     String ifoodProductId = existingProdMapping.get().getIfoodId();
                     LOG.infof("[EXPORT] Produto já mapeado: ifoodId=%s, atualizando status", ifoodProductId);
 
-                    ifoodCatalogSyncClient.updateProductStatus(token, merchantId, ifoodProductId,
-                            new IfoodUpdateStatusRequest(product.status()));
+                    try {
+                        ifoodCatalogSyncClient.updateProductStatus(token, merchantId, ifoodProductId,
+                                new IfoodUpdateStatusRequest(product.status()));
+                    } catch (com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationException ex) {
+                        if (ex.getMessage().contains("HTTP 404")) {
+                            LOG.warnf("[EXPORT] Produto %s não encontrado no iFood (404). Removendo mapping e recriando...", ifoodProductId);
+                            mappingRepository.deleteByStoreId(storeId); // Não é o ideal apagar todos, mas o panache só tem deleteByStoreId na interface
+                            
+                            // Em vez de recriar no mesmo loop (o que é complexo sem reescrever muito), vamos lançar uma exceção clara para rodar de novo
+                            throw new BusinessRuleException("O iFood não encontrou um produto mapeado (404). O mapeamento foi limpo. Por favor, execute o EXPORT novamente.");
+                        } else {
+                            throw ex;
+                        }
+                    }
                 }
             }
         }

@@ -23,6 +23,8 @@ public interface IfoodCatalogSyncClient {
      */
     String createProduct(String token, String merchantId, IfoodCreateProductRequest request);
 
+
+
     /**
      * Atualiza o preço de um produto.
      * PATCH /catalog/v2.0/merchants/{merchantId}/products/{productId}

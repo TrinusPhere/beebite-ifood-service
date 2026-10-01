@@ -17,6 +17,10 @@ import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodPrice;
+
+import com.fidecode.biteflowifood.application.dto.catalog.CatalogDiffResponse.IfoodItemPresentation;
+
 @ApplicationScoped
 public class CompareCatalogUseCase {
 
@@ -44,20 +48,33 @@ public class CompareCatalogUseCase {
                 .collect(Collectors.toMap(ProductResponse::id, p -> p));
 
         // 2. Obter catálogo do iFood
+        List<com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodItemData> sellableItems = ifoodCatalogClient.listSellableItems(token, merchantId);
+
+        Map<String, IfoodPrice> sellablePrices = sellableItems.stream()
+                .filter(i -> i.price() != null)
+                .collect(Collectors.toMap(com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodItemData::id, com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodItemData::price, (p1, p2) -> p1));
+
         List<IfoodCategory> ifoodCategories = ifoodCatalogClient.listCategories(token, merchantId);
         List<IfoodItemFull> ifoodItems = new ArrayList<>();
+
         for (IfoodCategory cat : ifoodCategories) {
-            ifoodItems.addAll(ifoodCatalogClient.listCategoryItems(token, merchantId, cat.id()));
+            var categoryItems = ifoodCatalogClient.listCategoryItems(token, merchantId, cat.id());
+            if (categoryItems == null || categoryItems.items() == null) continue;
+            
+            for (var itemData : categoryItems.items()) {
+                var itemProducts = categoryItems.products() != null ? categoryItems.products().stream().filter(p -> p.id().equals(itemData.id()) || p.id().equals(itemData.productId())).collect(Collectors.toList()) : List.<com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodProduct>of();
+                ifoodItems.add(new IfoodItemFull(itemData, itemProducts, List.of(), List.of())); // For comparison, we usually only need the base item info
+            }
         }
 
         // 3. Obter mappings existentes
         List<CatalogMapping> mappings = mappingRepository.findByStoreId(storeId).stream()
-                .filter(m -> m.getMappingType().equals("PRODUCT"))
+                .filter(m -> m.getMappingType().equals("PRODUCT") && m.getIfoodId() != null && !m.getIfoodId().isBlank())
                 .collect(Collectors.toList());
         Map<String, String> ifoodToBf = mappings.stream()
-                .collect(Collectors.toMap(CatalogMapping::getIfoodId, m -> m.getBiteflowId().toString()));
+                .collect(Collectors.toMap(CatalogMapping::getIfoodId, m -> m.getBiteflowId().toString(), (v1, v2) -> v1));
         Map<String, String> bfToIfood = mappings.stream()
-                .collect(Collectors.toMap(m -> m.getBiteflowId().toString(), CatalogMapping::getIfoodId));
+                .collect(Collectors.toMap(m -> m.getBiteflowId().toString(), CatalogMapping::getIfoodId, (v1, v2) -> v1));
 
         Set<String> processedBfIds = new HashSet<>();
 
@@ -66,11 +83,14 @@ public class CompareCatalogUseCase {
             String ifoodId = item.item().id();
             String matchedBfId = ifoodToBf.get(ifoodId);
 
+            var ifoodProduct = item.products() != null && !item.products().isEmpty() ? item.products().get(0) : null;
+            String ifoodProductName = ifoodProduct != null ? ifoodProduct.name() : "Produto sem nome";
+
             // Tentar match por externalCode ou nome exato se não houver mapeamento
             if (matchedBfId == null) {
                 matchedBfId = bfProducts.stream()
                         .filter(p -> (p.externalCode() != null && p.externalCode().equals(item.item().externalCode())) ||
-                                     p.name().equalsIgnoreCase(item.products().get(0).name()))
+                                     p.name().equalsIgnoreCase(ifoodProductName))
                         .map(ProductResponse::id)
                         .findFirst()
                         .orElse(null);
@@ -87,35 +107,62 @@ public class CompareCatalogUseCase {
                 BigDecimal bfPrice = bfProduct.channelPrices() != null ? 
                         bfProduct.channelPrices().stream().filter(c -> "IFOOD".equals(c.channel())).map(c -> c.price()).findFirst().orElse(bfProduct.price())
                         : bfProduct.price();
-                BigDecimal ifoodPrice = item.item().price() != null ? item.item().price().value() : BigDecimal.ZERO;
+                if (bfPrice == null) bfPrice = BigDecimal.ZERO;
+                        
+                IfoodPrice currentIfoodPrice = item.item().price();
+                if (currentIfoodPrice == null && sellablePrices.containsKey(ifoodId)) {
+                    currentIfoodPrice = sellablePrices.get(ifoodId);
+                }
+                        
+                BigDecimal ifoodPrice = currentIfoodPrice != null && currentIfoodPrice.value() != null ? currentIfoodPrice.value() : BigDecimal.ZERO;
                 
                 if (bfPrice.compareTo(ifoodPrice) != 0) {
                     conflictFields.add("price");
                 }
                 
                 // Comparar Nome
-                if (!bfProduct.name().equals(item.products().get(0).name())) {
+                if (!bfProduct.name().equals(ifoodProductName)) {
                     conflictFields.add("name");
                 }
                 
                 // Comparar Status
-                if (!bfProduct.status().equals(item.item().status())) {
+                String bfStatus = bfProduct.status() != null ? bfProduct.status() : "UNAVAILABLE";
+                String ifStatus = item.item().status() != null ? item.item().status() : "UNAVAILABLE";
+                if (!bfStatus.equals(ifStatus)) {
                     // Note: iFood only has AVAILABLE/UNAVAILABLE. PAUSED in BF means UNAVAILABLE in IFood.
-                    if (!(bfProduct.status().equals("PAUSED") && item.item().status().equals("UNAVAILABLE"))) {
+                    if (!(bfStatus.equals("PAUSED") && ifStatus.equals("UNAVAILABLE"))) {
                         conflictFields.add("status");
                     }
                 }
 
+                IfoodItemPresentation presentation = new IfoodItemPresentation(
+                        item.item().id(),
+                        ifoodProductName,
+                        currentIfoodPrice,
+                        item.item().status()
+                );
+                
                 if (conflictFields.isEmpty()) {
-                    entries.add(new CatalogDiffEntry("MATCH", bfProduct, item.products().get(0), List.of()));
+                    entries.add(new CatalogDiffEntry("MATCH", bfProduct, presentation, List.of()));
                     matches++;
                 } else {
-                    entries.add(new CatalogDiffEntry("CONFLICT", bfProduct, item.products().get(0), conflictFields));
+                    entries.add(new CatalogDiffEntry("CONFLICT", bfProduct, presentation, conflictFields));
                     conflicts++;
                 }
             } else {
+                IfoodPrice currentIfoodPrice = item.item().price();
+                if (currentIfoodPrice == null && sellablePrices.containsKey(ifoodId)) {
+                    currentIfoodPrice = sellablePrices.get(ifoodId);
+                }
+
+                IfoodItemPresentation presentation = new IfoodItemPresentation(
+                        item.item().id(),
+                        ifoodProductName,
+                        currentIfoodPrice,
+                        item.item().status()
+                );
                 // Apenas no iFood
-                entries.add(new CatalogDiffEntry("IFOOD_ONLY", null, item.products().get(0), List.of()));
+                entries.add(new CatalogDiffEntry("IFOOD_ONLY", null, presentation, List.of()));
                 ifoodOnly++;
             }
         }

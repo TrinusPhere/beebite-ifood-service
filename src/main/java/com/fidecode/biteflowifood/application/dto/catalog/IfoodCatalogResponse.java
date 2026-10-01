@@ -1,6 +1,7 @@
 package com.fidecode.biteflowifood.application.dto.catalog;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.annotation.JsonAlias;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -35,6 +36,7 @@ public class IfoodCatalogResponse {
     }
 
     public record IfoodItemData(
+            @JsonAlias({"id", "itemId"})
             String id,
             String type,
             String categoryId,

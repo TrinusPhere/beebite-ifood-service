@@ -35,7 +35,7 @@ class CatalogExportMapperTest {
                 "group-1", "Complementos", "CHECKBOX", false, 0, 1, null, "INGREDIENTS", List.of(option)
         );
 
-        IfoodCreateItemRequest request = CatalogExportMapper.toIfoodItem(product, List.of(group));
+        IfoodCreateProductRequest request = CatalogExportMapper.toIfoodProduct(product, List.of(group), "cat-1", "generated-item-1");
 
         // Validate ItemData
         assertEquals("prod-1", request.item().id());
@@ -77,7 +77,7 @@ class CatalogExportMapperTest {
                 null, null, false, null, "UN", true, true, null, null, null
         );
 
-        IfoodCreateItemRequest request = CatalogExportMapper.toIfoodItem(product, null);
+        IfoodCreateProductRequest request = CatalogExportMapper.toIfoodProduct(product, null, "cat-1", "generated-item-2");
 
         assertEquals("AVAILABLE", request.item().status()); // Default fallback
         assertEquals("DEFAULT", request.item().type()); // Default fallback

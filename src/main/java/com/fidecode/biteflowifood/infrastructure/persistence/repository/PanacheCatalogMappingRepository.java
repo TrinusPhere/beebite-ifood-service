@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.transaction.Transactional;
+
 @ApplicationScoped
 public class PanacheCatalogMappingRepository implements CatalogMappingRepository {
 
@@ -17,11 +19,13 @@ public class PanacheCatalogMappingRepository implements CatalogMappingRepository
     CatalogMappingPanacheRepo panacheRepo;
 
     @Override
+    @Transactional
     public void save(CatalogMapping mapping) {
         panacheRepo.getEntityManager().merge(CatalogMappingMapper.toEntity(mapping));
     }
 
     @Override
+    @Transactional
     public void saveAll(List<CatalogMapping> mappings) {
         mappings.forEach(this::save);
     }
@@ -49,7 +53,14 @@ public class PanacheCatalogMappingRepository implements CatalogMappingRepository
     }
 
     @Override
+    @Transactional
     public void deleteByStoreId(UUID storeId) {
         panacheRepo.delete("storeId = ?1", storeId);
+    }
+
+    @Override
+    @Transactional
+    public void delete(CatalogMapping mapping) {
+        panacheRepo.delete("ifoodId = ?1 and storeId = ?2", mapping.getIfoodId(), mapping.getStoreId());
     }
 }

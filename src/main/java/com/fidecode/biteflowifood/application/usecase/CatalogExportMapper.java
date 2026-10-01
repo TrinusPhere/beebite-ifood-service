@@ -30,7 +30,8 @@ public final class CatalogExportMapper {
      */
     public static IfoodCreateProductRequest toIfoodProduct(ProductResponse product,
                                                             List<ModifierGroupResponse> productGroups,
-                                                            String ifoodCategoryId) {
+                                                            String ifoodCategoryId,
+                                                            String generatedItemId) {
         List<IfoodOptionGroup> optionGroups = new ArrayList<>();
         List<IfoodOption> options = new ArrayList<>();
         List<IfoodProductData> products = new ArrayList<>();
@@ -108,7 +109,7 @@ public final class CatalogExportMapper {
 
         // iFood v2.0: item precisa de name, description, serves, productId
         IfoodItemData itemData = new IfoodItemData(
-                product.id(),
+                generatedItemId, // Use generated ID instead of Biteflow ID to prevent duplicate ID issues with product ID
                 product.id(), // productId = referência ao produto principal na lista products
                 product.name(),
                 product.description(),
