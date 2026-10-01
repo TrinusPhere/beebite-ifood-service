@@ -135,23 +135,56 @@ public class MergeCatalogUseCase {
     }
 
     private void handleUseIfood(UUID storeId, MergeDecision decision, Map<String, IfoodItemFull> ifoodItemMap) {
-        if (decision.ifoodItemId() == null || decision.biteflowProductId() == null) return;
+        if (decision.ifoodItemId() == null || decision.biteflowProductId() == null) {
+            LOG.warn("[MERGE-USE_IFOOD] ifoodItemId ou biteflowProductId é null, abortando.");
+            return;
+        }
+
+        LOG.infof("[MERGE-USE_IFOOD] Processando ifoodItemId=%s, biteflowProductId=%s", decision.ifoodItemId(), decision.biteflowProductId());
+        LOG.infof("[MERGE-USE_IFOOD] ifoodItemMap contém %d itens. Keys: %s", ifoodItemMap.size(), ifoodItemMap.keySet());
 
         IfoodItemFull itemF = ifoodItemMap.get(decision.ifoodItemId());
         ProductResponse product = biteflowCatalogClient.getProduct(storeId, UUID.fromString(decision.biteflowProductId()));
         
+        LOG.infof("[MERGE-USE_IFOOD] itemF=%s, product=%s", itemF != null ? "ENCONTRADO" : "NULL", product != null ? product.name() : "NULL");
+
         if (itemF != null && itemF.item() != null && product != null) {
+            LOG.infof("[MERGE-USE_IFOOD] itemF.item().price()=%s, itemF.item().contextModifiers()=%s", 
+                itemF.item().price(), itemF.item().contextModifiers());
+
             String name = itemF.products() != null && !itemF.products().isEmpty() ? itemF.products().get(0).name() : "Produto sem nome";
             String desc = itemF.products() != null && !itemF.products().isEmpty() ? itemF.products().get(0).description() : null;
-            BigDecimal price = itemF.item().price() != null ? itemF.item().price().value() : BigDecimal.ZERO;
+            BigDecimal ifoodPrice = itemF.item().price() != null ? itemF.item().price().value() : BigDecimal.ZERO;
             String status = itemF.item().status() != null ? itemF.item().status() : "AVAILABLE";
             
+            // Se o preço vier de contextModifiers (não diretamente no campo price), extrair de lá
+            if (itemF.item().price() == null && itemF.item().contextModifiers() != null) {
+                ifoodPrice = extractPriceFromContextModifiers(itemF.item().contextModifiers());
+                LOG.infof("[MERGE-USE_IFOOD] Preço extraído de contextModifiers: %s", ifoodPrice);
+            }
+
+            LOG.infof("[MERGE-USE_IFOOD] name=%s, ifoodPrice=%s, status=%s", name, ifoodPrice, status);
+            
+            // Copiar channelPrices existentes, mas substituir/adicionar o canal IFOOD com o preço do iFood
             List<ChannelPriceDto> reqChannels = new ArrayList<>();
+            boolean ifoodChannelFound = false;
             if (product.channelPrices() != null) {
                 for (var cp : product.channelPrices()) {
-                    reqChannels.add(new ChannelPriceDto(cp.channel(), cp.price()));
+                    if ("IFOOD".equals(cp.channel())) {
+                        // Substituir preço do canal IFOOD pelo preço vindo do iFood
+                        reqChannels.add(new ChannelPriceDto("IFOOD", ifoodPrice));
+                        ifoodChannelFound = true;
+                    } else {
+                        reqChannels.add(new ChannelPriceDto(cp.channel(), cp.price()));
+                    }
                 }
             }
+            if (!ifoodChannelFound) {
+                // Se não existia canal IFOOD, adicionar com o preço do iFood
+                reqChannels.add(new ChannelPriceDto("IFOOD", ifoodPrice));
+            }
+
+            LOG.infof("[MERGE-USE_IFOOD] channelPrices montados: %s", reqChannels);
             
             List<TechnicalSheetItemDto> reqTech = new ArrayList<>();
             if (product.technicalSheet() != null) {
@@ -161,15 +194,36 @@ public class MergeCatalogUseCase {
             }
             
             CreateProductRequest req = new CreateProductRequest(
-                    name, product.categoryId(), desc, price, product.imageUrl(), product.stock(),
+                    name, product.categoryId(), desc, ifoodPrice, product.imageUrl(), product.stock(),
                     status, product.externalCode(), product.catalogItemType(), reqChannels,
                     product.productType(), product.trackStock(), product.productionSectorId(),
                     product.saleUnit(), product.availableDigitalMenu(), product.availablePdv(),
                     reqTech, product.removableItemIds(), product.modifierGroupIds()
             );
             
+            LOG.infof("[MERGE-USE_IFOOD] Chamando updateProduct para storeId=%s, productId=%s", storeId, product.id());
             biteflowCatalogClient.updateProduct(storeId, UUID.fromString(product.id()), req);
+            LOG.info("[MERGE-USE_IFOOD] updateProduct concluído com sucesso.");
+        } else {
+            LOG.warnf("[MERGE-USE_IFOOD] Condição não atendida - itemF=%s, itemF.item()=%s, product=%s",
+                itemF != null, itemF != null ? itemF.item() != null : "N/A", product != null);
         }
+    }
+
+    private BigDecimal extractPriceFromContextModifiers(com.fasterxml.jackson.databind.JsonNode contextModifiers) {
+        if (contextModifiers != null && contextModifiers.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode modifier : contextModifiers) {
+                String ctx = modifier.path("catalogContext").asText();
+                if ("DEFAULT".equals(ctx) || "IFOOD".equals(ctx) || ctx.isBlank()) {
+                    com.fasterxml.jackson.databind.JsonNode priceNode = modifier.path("price");
+                    if (!priceNode.isMissingNode() && !priceNode.isNull()) {
+                        BigDecimal value = priceNode.path("value").isMissingNode() ? null : new BigDecimal(priceNode.path("value").asText());
+                        if (value != null) return value;
+                    }
+                }
+            }
+        }
+        return BigDecimal.ZERO;
     }
 
     private void handleImport(UUID storeId, String merchantId, String token, MergeDecision decision, Map<String, IfoodItemFull> ifoodItemMap) {

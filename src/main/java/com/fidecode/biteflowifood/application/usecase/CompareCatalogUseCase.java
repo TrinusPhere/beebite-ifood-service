@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodPrice;
 
 import com.fidecode.biteflowifood.application.dto.catalog.CatalogDiffResponse.IfoodItemPresentation;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @ApplicationScoped
 public class CompareCatalogUseCase {
@@ -50,9 +51,15 @@ public class CompareCatalogUseCase {
         // 2. Obter catálogo do iFood
         List<com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodItemData> sellableItems = ifoodCatalogClient.listSellableItems(token, merchantId);
 
+        try {
+            java.nio.file.Files.writeString(java.nio.file.Paths.get("sellable_items_dump.json"), new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(sellableItems));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         Map<String, IfoodPrice> sellablePrices = sellableItems.stream()
-                .filter(i -> i.price() != null)
-                .collect(Collectors.toMap(com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodItemData::id, com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodItemData::price, (p1, p2) -> p1));
+                .filter(i -> extractPrice(i) != null)
+                .collect(Collectors.toMap(i -> i.id() != null ? i.id() : i.itemId(), this::extractPrice, (p1, p2) -> p1));
 
         List<IfoodCategory> ifoodCategories = ifoodCatalogClient.listCategories(token, merchantId);
         List<IfoodItemFull> ifoodItems = new ArrayList<>();
@@ -109,7 +116,7 @@ public class CompareCatalogUseCase {
                         : bfProduct.price();
                 if (bfPrice == null) bfPrice = BigDecimal.ZERO;
                         
-                IfoodPrice currentIfoodPrice = item.item().price();
+                IfoodPrice currentIfoodPrice = extractPrice(item.item());
                 if (currentIfoodPrice == null && sellablePrices.containsKey(ifoodId)) {
                     currentIfoodPrice = sellablePrices.get(ifoodId);
                 }
@@ -150,7 +157,7 @@ public class CompareCatalogUseCase {
                     conflicts++;
                 }
             } else {
-                IfoodPrice currentIfoodPrice = item.item().price();
+                IfoodPrice currentIfoodPrice = extractPrice(item.item());
                 if (currentIfoodPrice == null && sellablePrices.containsKey(ifoodId)) {
                     currentIfoodPrice = sellablePrices.get(ifoodId);
                 }
@@ -176,5 +183,24 @@ public class CompareCatalogUseCase {
         }
 
         return new CatalogDiffResponse(entries, matches, conflicts, biteflowOnly, ifoodOnly);
+    }
+
+    private IfoodPrice extractPrice(com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodItemData itemData) {
+        if (itemData.price() != null) return itemData.price();
+        
+        if (itemData.contextModifiers() != null && itemData.contextModifiers().isArray()) {
+            for (JsonNode modifier : itemData.contextModifiers()) {
+                String ctx = modifier.path("catalogContext").asText();
+                if ("DEFAULT".equals(ctx) || "IFOOD".equals(ctx) || ctx.isBlank()) {
+                    JsonNode priceNode = modifier.path("price");
+                    if (!priceNode.isMissingNode() && !priceNode.isNull()) {
+                        BigDecimal value = priceNode.path("value").isMissingNode() ? null : new BigDecimal(priceNode.path("value").asText());
+                        BigDecimal originalValue = priceNode.path("originalValue").isMissingNode() ? null : new BigDecimal(priceNode.path("originalValue").asText());
+                        return new IfoodPrice(value, originalValue);
+                    }
+                }
+            }
+        }
+        return null;
     }
 }
