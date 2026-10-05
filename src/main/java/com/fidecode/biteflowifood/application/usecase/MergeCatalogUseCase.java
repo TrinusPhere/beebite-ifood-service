@@ -64,7 +64,7 @@ public class MergeCatalogUseCase {
 
         for (MergeDecision decision : request.decisions()) {
             try {
-                processDecision(storeId, merchantId, token, decision, ifoodItemMap);
+                processDecision(storeId, merchantId, token, decision, ifoodItemMap, categoryMap);
             } catch (Exception e) {
                 LOG.errorf(e, "[MERGE] Falha ao processar decisão %s para item %s: %s", 
                     decision.action(), decision.ifoodItemId(), e.getMessage());
@@ -96,7 +96,7 @@ public class MergeCatalogUseCase {
         }
     }
 
-    private void processDecision(UUID storeId, String merchantId, String token, MergeDecision decision, Map<String, IfoodItemFull> ifoodItemMap) {
+    private void processDecision(UUID storeId, String merchantId, String token, MergeDecision decision, Map<String, IfoodItemFull> ifoodItemMap, Map<String, IfoodCategory> categoryMap) {
         switch (decision.action()) {
             case "USE_BITEFLOW":
                 handleUseBiteflow(storeId, merchantId, token, decision, ifoodItemMap);
@@ -105,7 +105,7 @@ public class MergeCatalogUseCase {
                 handleUseIfood(storeId, decision, ifoodItemMap);
                 break;
             case "IMPORT":
-                handleImport(storeId, merchantId, token, decision, ifoodItemMap);
+                handleImport(storeId, merchantId, token, decision, ifoodItemMap, categoryMap);
                 break;
             case "EXPORT":
                 handleExport(storeId, merchantId, token, decision, ifoodItemMap);
@@ -123,6 +123,9 @@ public class MergeCatalogUseCase {
         if (decision.ifoodItemId() == null || decision.biteflowProductId() == null) return;
 
         ProductResponse product = biteflowCatalogClient.getProduct(storeId, UUID.fromString(decision.biteflowProductId()));
+        if (product == null) {
+            throw new BusinessRuleException("Produto Biteflow " + decision.biteflowProductId() + " não encontrado (pode ter sido excluído no PDV). Recarregue a comparação do catálogo.");
+        }
         IfoodItemFull itemFull = ifoodItemMap.get(decision.ifoodItemId());
         
         if (itemFull == null || itemFull.item() == null || itemFull.item().categoryId() == null) {
@@ -226,7 +229,7 @@ public class MergeCatalogUseCase {
         return BigDecimal.ZERO;
     }
 
-    private void handleImport(UUID storeId, String merchantId, String token, MergeDecision decision, Map<String, IfoodItemFull> ifoodItemMap) {
+    private void handleImport(UUID storeId, String merchantId, String token, MergeDecision decision, Map<String, IfoodItemFull> ifoodItemMap, Map<String, IfoodCategory> categoryMap) {
         if (decision.ifoodItemId() == null) return;
 
         IfoodItemFull itemFull = ifoodItemMap.get(decision.ifoodItemId());
@@ -235,7 +238,9 @@ public class MergeCatalogUseCase {
         }
 
         String ifoodCategoryId = itemFull.item().categoryId();
-        UUID biteflowCategoryId = getOrCreateBiteflowCategory(storeId, ifoodCategoryId, merchantId, token);
+        IfoodCategory ifoodCategory = categoryMap.get(ifoodCategoryId);
+        String ifoodCategoryName = ifoodCategory != null && ifoodCategory.name() != null ? ifoodCategory.name() : "Categoria Importada";
+        UUID biteflowCategoryId = getOrCreateBiteflowCategory(storeId, ifoodCategoryId, ifoodCategoryName);
 
         String name = itemFull.products() != null && !itemFull.products().isEmpty() ? itemFull.products().get(0).name() : "Produto sem nome";
         String desc = itemFull.products() != null && !itemFull.products().isEmpty() ? itemFull.products().get(0).description() : null;
@@ -244,12 +249,23 @@ public class MergeCatalogUseCase {
         String externalCode = itemFull.item().externalCode();
 
         Optional<CatalogMapping> existingProdMapping = mappingRepository.findByIfoodIdAndStoreId(decision.ifoodItemId(), storeId);
-        
+
+        ProductResponse mappedProduct = null;
         if (existingProdMapping.isPresent()) {
+            mappedProduct = biteflowCatalogClient.getProduct(storeId, existingProdMapping.get().getBiteflowId());
+            if (mappedProduct == null) {
+                // Mapeamento órfão: o produto foi excluído no PDV. Remove e segue o fluxo de importação normal.
+                LOG.warnf("[MERGE] Mapeamento órfão: iFood %s -> Biteflow %s (produto não existe mais). Removendo e reimportando.",
+                    decision.ifoodItemId(), existingProdMapping.get().getBiteflowId());
+                mappingRepository.delete(existingProdMapping.get());
+            }
+        }
+        
+        if (mappedProduct != null) {
             LOG.infof("[MERGE] Produto iFood %s já está mapeado para Biteflow %s. Atualizando status/preço no iFood.", 
                 decision.ifoodItemId(), existingProdMapping.get().getBiteflowId());
             
-            ProductResponse product = biteflowCatalogClient.getProduct(storeId, existingProdMapping.get().getBiteflowId());
+            ProductResponse product = mappedProduct;
             List<ModifierGroupResponse> productGroups = biteflowCatalogClient.listModifierGroups(storeId);
             
             try {
@@ -290,20 +306,42 @@ public class MergeCatalogUseCase {
     }
 
     private void handleLinkOnly(UUID storeId, MergeDecision decision) {
-        if (decision.ifoodItemId() != null && decision.biteflowProductId() != null) {
-            mappingRepository.save(new CatalogMapping(storeId, decision.ifoodItemId(), UUID.fromString(decision.biteflowProductId()), "PRODUCT"));
+        if (decision.ifoodItemId() == null || decision.biteflowProductId() == null) return;
+
+        UUID biteflowProductId = UUID.fromString(decision.biteflowProductId());
+        ProductResponse product = biteflowCatalogClient.getProduct(storeId, biteflowProductId);
+        if (product == null) {
+            throw new BusinessRuleException("Produto BiteFlow " + decision.biteflowProductId()
+                + " não encontrado (pode ter sido excluído no PDV). Recarregue a comparação do catálogo.");
         }
+
+        Optional<CatalogMapping> existing = mappingRepository.findByIfoodIdAndStoreId(decision.ifoodItemId(), storeId);
+        if (existing.isPresent()) {
+            if (biteflowProductId.equals(existing.get().getBiteflowId())) {
+                return; // já vinculado ao mesmo produto
+            }
+            // Substitui o vínculo anterior (ex.: apontava para um produto excluído) em vez de duplicar
+            mappingRepository.delete(existing.get());
+        }
+        mappingRepository.save(new CatalogMapping(storeId, decision.ifoodItemId(), biteflowProductId, "PRODUCT"));
     }
 
-    private UUID getOrCreateBiteflowCategory(UUID storeId, String ifoodCategoryId, String merchantId, String token) {
+    private UUID getOrCreateBiteflowCategory(UUID storeId, String ifoodCategoryId, String categoryName) {
         Optional<CatalogMapping> existingCatMapping = mappingRepository.findByIfoodIdAndStoreId(ifoodCategoryId, storeId);
         if (existingCatMapping.isPresent()) {
-            return existingCatMapping.get().getBiteflowId();
+            String mappedId = existingCatMapping.get().getBiteflowId().toString();
+            boolean stillExists = biteflowCatalogClient.listCategories(storeId).stream()
+                    .anyMatch(c -> mappedId.equals(c.id()));
+            if (stillExists) {
+                return existingCatMapping.get().getBiteflowId();
+            }
+            LOG.warnf("[MERGE] Mapeamento órfão de categoria: iFood %s -> BiteFlow %s (categoria não existe mais). Recriando.",
+                ifoodCategoryId, mappedId);
+            mappingRepository.delete(existingCatMapping.get());
         }
         
-        // Categoria não mapeada, criar no Biteflow (simplificado para MVP)
         com.fidecode.biteflowifood.application.dto.biteflow.BiteflowCatalogRequest.CreateCategoryRequest catReq = 
-            new com.fidecode.biteflowifood.application.dto.biteflow.BiteflowCatalogRequest.CreateCategoryRequest("Categoria Importada", "AVAILABLE", 0, List.of());
+            new com.fidecode.biteflowifood.application.dto.biteflow.BiteflowCatalogRequest.CreateCategoryRequest(categoryName, "AVAILABLE", 0, List.of());
         String newBiteflowCatId = biteflowCatalogClient.createCategory(storeId, catReq);
         mappingRepository.save(new CatalogMapping(storeId, ifoodCategoryId, UUID.fromString(newBiteflowCatId), "CATEGORY"));
         return UUID.fromString(newBiteflowCatId);
@@ -313,7 +351,7 @@ public class MergeCatalogUseCase {
         String generatedItemId = UUID.randomUUID().toString();
         IfoodCreateProductRequest req = CatalogExportMapper.toIfoodProduct(product, productGroups, catIfoodId, generatedItemId);
         String createdIfoodId = ifoodCatalogSyncClient.createProduct(token, merchantId, req);
-        mappingRepository.save(new CatalogMapping(storeId, createdIfoodId, UUID.fromString(decisionIfoodItemId), "PRODUCT"));
+        mappingRepository.save(new CatalogMapping(storeId, createdIfoodId, UUID.fromString(product.id()), "PRODUCT"));
     }
 
     private void handleExport(UUID storeId, String merchantId, String token, MergeDecision decision, Map<String, IfoodItemFull> ifoodItemMap) {

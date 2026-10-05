@@ -24,7 +24,7 @@ class CatalogSyncMapperTest {
     @Test
     void shouldMapProductCorrectly() {
         IfoodPrice price = new IfoodPrice(new BigDecimal("25.50"), null);
-        IfoodItemData data = new IfoodItemData("item-1", "DEFAULT", "cat-1", "AVAILABLE", price, "PDV-123", "prod-1", null);
+        IfoodItemData data = new IfoodItemData("item-1", "item-1", "DEFAULT", "cat-1", "AVAILABLE", price, "PDV-123", "prod-1", null);
         IfoodProduct prod = new IfoodProduct("prod-1", "X-Burger", "Pão, carne e queijo", "http://image.png", null);
         IfoodItemFull fullItem = new IfoodItemFull(data, List.of(prod), List.of(), List.of());
 

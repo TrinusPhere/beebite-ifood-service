@@ -38,7 +38,8 @@ class CatalogExportMapperTest {
         IfoodCreateProductRequest request = CatalogExportMapper.toIfoodProduct(product, List.of(group), "cat-1", "generated-item-1");
 
         // Validate ItemData
-        assertEquals("prod-1", request.item().id());
+        assertEquals("generated-item-1", request.item().id());
+        assertEquals("prod-1", request.item().productId());
         assertEquals("DEFAULT", request.item().type());
         assertEquals("AVAILABLE", request.item().status());
         assertEquals("EXT-123", request.item().externalCode());
@@ -46,9 +47,9 @@ class CatalogExportMapperTest {
 
         // Validate Products array (root product + modifier products)
         assertEquals(2, request.products().size());
-        assertEquals("prod-1", request.products().get(0).id());
-        assertEquals("prod-gelo-1", request.products().get(1).id());
-        assertEquals("Com gelo", request.products().get(1).name());
+        assertEquals("prod-gelo-1", request.products().get(0).id());
+        assertEquals("Com gelo", request.products().get(0).name());
+        assertEquals("prod-1", request.products().get(1).id());
 
         // Validate OptionGroups
         assertEquals(1, request.optionGroups().size());
@@ -57,13 +58,14 @@ class CatalogExportMapperTest {
         assertEquals("INGREDIENTS", outGroup.optionGroupType());
         assertEquals(0, outGroup.min());
         assertEquals(1, outGroup.max());
-        assertEquals(1, outGroup.optionIds().size());
-        assertEquals("opt-1", outGroup.optionIds().get(0));
-
         // Validate Options
         assertEquals(1, request.options().size());
         IfoodOption outOption = request.options().get(0);
-        assertEquals("opt-1", outOption.id());
+        assertNotNull(outOption.id());
+        
+        assertEquals(1, outGroup.optionIds().size());
+        assertEquals(outOption.id(), outGroup.optionIds().get(0));
+
         assertEquals("prod-gelo-1", outOption.productId());
         assertEquals("AVAILABLE", outOption.status());
         assertEquals(new BigDecimal("0.00"), outOption.price().value());

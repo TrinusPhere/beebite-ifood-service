@@ -52,21 +52,20 @@ public class SyncProductToIfoodUseCase {
         }
 
         IfoodCredential credential = credentialRepository.findByStoreId(event.storeId()).orElse(null);
-        if (credential == null || !credential.isEnabled() || !credential.isTokenValid()) {
+        boolean credentialValid = credential != null && credential.isEnabled() && credential.isTokenValid();
+
+        if ("PRODUCT_DELETED".equals(event.changeType())) {
+            handleProductDeleted(event, mapping, credentialValid ? credential : null);
+            return;
+        }
+
+        if (!credentialValid) {
             LOG.warnf("[SYNC-TO-IFOOD] Loja %s sem credencial válida. Ignorando.", event.storeId());
             return;
         }
 
         String token = credential.getAccessToken();
         String merchantId = credential.getMerchantId();
-
-        if ("PRODUCT_DELETED".equals(event.changeType())) {
-            // Se foi deletado no PDV, vamos pausar no iFood
-            ifoodCatalogSyncClient.updateProductStatus(token, merchantId, mapping.getIfoodId(),
-                    new IfoodUpdateStatusRequest("UNAVAILABLE"));
-            LOG.infof("[SYNC-TO-IFOOD] Produto %s pausado no iFood devido a exclusão no PDV", event.productId());
-            return;
-        }
 
         ProductResponse product = biteflowCatalogClient.getProduct(event.storeId(), event.productId());
         if (product == null) {
@@ -96,5 +95,29 @@ public class SyncProductToIfoodUseCase {
                 LOG.errorf(e, "[SYNC-TO-IFOOD] Erro ao atualizar status: %s", e.getMessage());
             }
         }
+    }
+
+    /**
+     * Produto excluído no PDV: pausa o item no iFood (se possível) e remove o vínculo,
+     * evitando mapeamentos órfãos que quebram o merge/comparação depois.
+     */
+    private void handleProductDeleted(BiteflowCatalogChangedEvent event, CatalogMapping mapping, IfoodCredential credential) {
+        if (credential != null) {
+            try {
+                ifoodCatalogSyncClient.updateProductStatus(credential.getAccessToken(), credential.getMerchantId(),
+                        mapping.getIfoodId(), new IfoodUpdateStatusRequest("UNAVAILABLE"));
+                LOG.infof("[SYNC-TO-IFOOD] Produto %s pausado no iFood devido a exclusão no PDV", event.productId());
+            } catch (Exception e) {
+                // O subscriber faz ACK de erros de negócio (sem retry). Por isso o vínculo é removido mesmo assim:
+                // o item aparecerá como "apenas no iFood" na comparação, em vez de virar um vínculo órfão.
+                LOG.errorf(e, "[SYNC-TO-IFOOD] Não foi possível pausar o item %s no iFood: %s", mapping.getIfoodId(), e.getMessage());
+            }
+        } else {
+            LOG.warnf("[SYNC-TO-IFOOD] Loja %s sem credencial válida: item %s não foi pausado no iFood.",
+                    event.storeId(), mapping.getIfoodId());
+        }
+
+        catalogMappingRepository.delete(mapping);
+        LOG.infof("[SYNC-TO-IFOOD] Vínculo iFood %s -> BiteFlow %s removido.", mapping.getIfoodId(), event.productId());
     }
 }
