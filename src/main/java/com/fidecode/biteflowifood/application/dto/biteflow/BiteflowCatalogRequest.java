@@ -10,7 +10,7 @@ public class BiteflowCatalogRequest {
     }
 
     public record CreateProductRequest(String name, String categoryId,
-            String description, BigDecimal price, String imageUrl, Integer stock, String status, String externalCode,
+            String description, BigDecimal price, BigDecimal estimatedCost, String imageUrl, Integer stock, String status, String externalCode,
             String catalogItemType, List<ChannelPriceDto> channelPrices, String productType,
             Boolean trackStock, String productionSectorId, String saleUnit, Boolean availableDigitalMenu,
             Boolean availablePdv, List<TechnicalSheetItemDto> technicalSheet, List<String> removableItemIds,

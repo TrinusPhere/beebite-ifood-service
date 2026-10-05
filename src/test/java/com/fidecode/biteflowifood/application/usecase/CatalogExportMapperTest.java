@@ -24,7 +24,7 @@ class CatalogExportMapperTest {
     @Test
     void shouldMapProductWithModifiersCorrectly() {
         ProductResponse product = new ProductResponse(
-                "prod-1", "Coca Cola", "cat-1", "Gelada", new BigDecimal("5.00"),
+                "prod-1", "Coca Cola", "cat-1", "Gelada", new BigDecimal("5.00"), null,
                 null, null, "AVAILABLE", "EXT-123", "DEFAULT",
                 List.of(new ChannelPriceDto("IFOOD", new BigDecimal("6.00"))),
                 null, false, null, "UN", true, true, null, null, List.of("group-1")
@@ -74,7 +74,7 @@ class CatalogExportMapperTest {
     @Test
     void shouldHandleNullPricesAndDefaults() {
         ProductResponse product = new ProductResponse(
-                "prod-2", "Agua", "cat-1", null, null,
+                "prod-2", "Agua", "cat-1", null, null, null,
                 null, null, null, null, null,
                 null, null, false, null, "UN", true, true, null, null, null
         );

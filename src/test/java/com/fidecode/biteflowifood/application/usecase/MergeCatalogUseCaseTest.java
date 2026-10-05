@@ -77,7 +77,7 @@ class MergeCatalogUseCaseTest {
         MergeCatalogUseCase.MergeRequest request = new MergeCatalogUseCase.MergeRequest(List.of(decision));
 
         ProductResponse bfProduct = new ProductResponse(
-                bfProductId, "Hamburguer", "cat-1", "Desc", BigDecimal.valueOf(10.0),
+                bfProductId, "Hamburguer", "cat-1", "Desc", BigDecimal.valueOf(10.0), null,
                 null, 0, "AVAILABLE", "EXT-1", "DEFAULT", null, "RESALE", false, null, "UN", true, true, null, null, null
         );
 
@@ -213,7 +213,7 @@ class MergeCatalogUseCaseTest {
     }
 
     private ProductResponse product(String id) {
-        return new ProductResponse(id, "Produto", "cat-1", null, BigDecimal.TEN,
+        return new ProductResponse(id, "Produto", "cat-1", null, BigDecimal.TEN, null,
                 null, 0, "AVAILABLE", null, "DEFAULT", null, "RESALE", false, null, "UN", true, true, null, null, null);
     }
 }

@@ -40,6 +40,7 @@ class CatalogSyncMapperTest {
         assertEquals(1, request.channelPrices().size());
         assertEquals("IFOOD", request.channelPrices().get(0).channel());
         assertEquals(new BigDecimal("25.50"), request.channelPrices().get(0).price());
+        assertEquals(new BigDecimal("25.50"), request.price());
     }
 
     @Test

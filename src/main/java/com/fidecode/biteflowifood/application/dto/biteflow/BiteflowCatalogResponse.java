@@ -19,6 +19,7 @@ public class BiteflowCatalogResponse {
             String categoryId,
             String description,
             BigDecimal price,
+            BigDecimal estimatedCost,
             String imageUrl,
             Integer stock,
             String status,

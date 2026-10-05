@@ -3,6 +3,7 @@ package com.fidecode.biteflowifood.application.usecase;
 import com.fidecode.biteflowifood.application.dto.biteflow.BiteflowCatalogRequest.*;
 import com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.*;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,9 +24,25 @@ public final class CatalogSyncMapper {
         String description = prod != null ? prod.description() : null;
         String imageUrl = prod != null ? prod.imagePath() : null;
 
+        BigDecimal basePrice = BigDecimal.ZERO;
+        try {
+            java.io.FileWriter fw = new java.io.FileWriter("debug_import.log", true);
+            fw.write("[BITEFLOW-DEBUG] Processing: " + name + "\n");
+            if (data.price() != null && data.price().value() != null) {
+                basePrice = data.price().value();
+            } else if (data.contextModifiers() != null) {
+                basePrice = extractPriceFromContextModifiers(data.contextModifiers());
+                fw.write("[BITEFLOW-DEBUG] Extracted price from contextModifiers: " + basePrice + ", JSON: " + data.contextModifiers().toString() + "\n");
+            } else {
+                fw.write("[BITEFLOW-DEBUG] No price or contextModifiers found for " + name + "\n");
+            }
+            fw.write("[BITEFLOW-DEBUG] Final basePrice for " + name + ": " + basePrice + "\n");
+            fw.close();
+        } catch (Exception e) {}
+
         List<ChannelPriceDto> channelPrices = new ArrayList<>();
-        if (data.price() != null && data.price().value() != null) {
-            channelPrices.add(new ChannelPriceDto("IFOOD", data.price().value()));
+        if (basePrice.compareTo(BigDecimal.ZERO) > 0) {
+            channelPrices.add(new ChannelPriceDto("IFOOD", basePrice));
         }
 
         List<String> modifierGroupIds = new ArrayList<>();
@@ -36,7 +53,8 @@ public final class CatalogSyncMapper {
                 name,
                 null, // categoryId should be resolved externally
                 description,
-                null, // base price in PDV, maybe we can use iFood price as fallback when creating
+                basePrice, // base price in PDV, maybe we can use iFood price as fallback when creating
+                null, // estimatedCost
                 imageUrl,
                 null,
                 data.status(),
@@ -118,5 +136,21 @@ public final class CatalogSyncMapper {
             case "COMBO_V2" -> "COMBO";
             default -> "DEFAULT";
         };
+    }
+
+    private static BigDecimal extractPriceFromContextModifiers(com.fasterxml.jackson.databind.JsonNode contextModifiers) {
+        if (contextModifiers != null && contextModifiers.isArray()) {
+            for (com.fasterxml.jackson.databind.JsonNode modifier : contextModifiers) {
+                String ctx = modifier.path("catalogContext").asText();
+                if ("DEFAULT".equals(ctx) || "IFOOD".equals(ctx) || ctx.isBlank()) {
+                    com.fasterxml.jackson.databind.JsonNode priceNode = modifier.path("price");
+                    if (!priceNode.isMissingNode() && !priceNode.isNull()) {
+                        BigDecimal value = priceNode.path("value").isMissingNode() ? null : new BigDecimal(priceNode.path("value").asText());
+                        if (value != null) return value;
+                    }
+                }
+            }
+        }
+        return BigDecimal.ZERO;
     }
 }

@@ -57,7 +57,7 @@ class ExportCatalogToIfoodUseCaseTest {
         CategoryResponse catResponse = new CategoryResponse(catId.toString(), "Lanches", "AVAILABLE", 1, List.of());
         ProductResponse prodResponse = new ProductResponse(
                 prodId.toString(), "X-Burger", catId.toString(), "Descrição",
-                BigDecimal.valueOf(15.0), null, 10, "AVAILABLE", "PDV-XBURGER", "DEFAULT",
+                BigDecimal.valueOf(15.0), null, null, 10, "AVAILABLE", "PDV-XBURGER", "DEFAULT",
                 List.of(), "PRODUCED", true, null, "UN", true, true,
                 List.of(), List.of(), List.of());
 

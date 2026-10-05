@@ -197,7 +197,7 @@ public class MergeCatalogUseCase {
             }
             
             CreateProductRequest req = new CreateProductRequest(
-                    name, product.categoryId(), desc, ifoodPrice, product.imageUrl(), product.stock(),
+                    name, product.categoryId(), desc, ifoodPrice, product.estimatedCost(), product.imageUrl(), product.stock(),
                     status, product.externalCode(), product.catalogItemType(), reqChannels,
                     product.productType(), product.trackStock(), product.productionSectorId(),
                     product.saleUnit(), product.availableDigitalMenu(), product.availablePdv(),
@@ -296,7 +296,7 @@ public class MergeCatalogUseCase {
                 ifoodCatalogSyncClient.createProduct(token, merchantId, req);
             } else {
                 CreateProductRequest createReq = new CreateProductRequest(
-                        name, biteflowCategoryId.toString(), desc, price, null, 0,
+                        name, biteflowCategoryId.toString(), desc, price, null, null, 0,
                         status, externalCode, "DEFAULT", List.of(), "RESALE", false, null, "UN", true, true, List.of(), null, List.of()
                 );
                 String newBiteflowProductId = biteflowCatalogClient.createProduct(storeId, createReq);

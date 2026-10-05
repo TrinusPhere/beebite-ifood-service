@@ -118,6 +118,7 @@ public class ImportCatalogFromIfoodUseCase {
                             biteflowCategoryId.toString(),
                             baseProdReq.description(),
                             baseProdReq.price(),
+                            null, // estimatedCost
                             localImageUrl,
                             baseProdReq.stock(),
                             baseProdReq.status(),
