@@ -41,20 +41,24 @@ public class PubSubInitializer {
     // Tópicos publicados pelo serviço de integração (para o BiteFlow consumir)
     private static final String TOPIC_IFOOD_ORDER_PLACED          = "ifood-order-placed";
     private static final String TOPIC_IFOOD_ORDER_STATUS_CHANGED   = "ifood-order-status-changed";
+    private static final String TOPIC_IFOOD_CHAT_MESSAGE           = "ifood-chat-message";
 
     // Tópicos publicados pelo BiteFlow (para o serviço de integração consumir)
     private static final String TOPIC_BITEFLOW_STATUS_CHANGED      = "biteflow-order-status-changed";
     private static final String TOPIC_BITEFLOW_ORDER_CANCELLED      = "biteflow-order-cancelled";
     private static final String TOPIC_BITEFLOW_CATALOG_CHANGED     = "biteflow-catalog-changed";
+    private static final String TOPIC_BITEFLOW_CHAT_MESSAGE        = "biteflow-chat-message-outbound";
 
     // Subscriptions que este serviço consome
     private static final String SUB_BITEFLOW_STATUS_CHANGED = "biteflow-order-status-changed-sub";
     private static final String SUB_BITEFLOW_ORDER_CANCELLED = "biteflow-order-cancelled-sub";
     private static final String SUB_BITEFLOW_CATALOG_CHANGED = "biteflow-catalog-changed-sub";
+    private static final String SUB_BITEFLOW_CHAT_MESSAGE = "biteflow-chat-message-outbound-sub";
 
     // Subscriptions que o BiteFlow consome (criamos aqui para facilitar ambiente local)
     private static final String SUB_IFOOD_ORDER_PLACED = "ifood-order-placed-sub";
     private static final String SUB_IFOOD_ORDER_STATUS_CHANGED = "ifood-order-status-changed-sub";
+    private static final String SUB_IFOOD_CHAT_MESSAGE = "ifood-chat-message-sub";
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")
     Optional<String> emulatorEndpoint;
@@ -102,9 +106,11 @@ public class PubSubInitializer {
         try (TopicAdminClient client = TopicAdminClient.create(settings)) {
             createTopicIfNotExists(client, TOPIC_IFOOD_ORDER_PLACED);
             createTopicIfNotExists(client, TOPIC_IFOOD_ORDER_STATUS_CHANGED);
+            createTopicIfNotExists(client, TOPIC_IFOOD_CHAT_MESSAGE);
             createTopicIfNotExists(client, TOPIC_BITEFLOW_STATUS_CHANGED);
             createTopicIfNotExists(client, TOPIC_BITEFLOW_ORDER_CANCELLED);
             createTopicIfNotExists(client, TOPIC_BITEFLOW_CATALOG_CHANGED);
+            createTopicIfNotExists(client, TOPIC_BITEFLOW_CHAT_MESSAGE);
         }
     }
 
@@ -121,8 +127,10 @@ public class PubSubInitializer {
             createSubscriptionIfNotExists(client, SUB_BITEFLOW_STATUS_CHANGED, TOPIC_BITEFLOW_STATUS_CHANGED);
             createSubscriptionIfNotExists(client, SUB_BITEFLOW_ORDER_CANCELLED, TOPIC_BITEFLOW_ORDER_CANCELLED);
             createSubscriptionIfNotExists(client, SUB_BITEFLOW_CATALOG_CHANGED, TOPIC_BITEFLOW_CATALOG_CHANGED);
+            createSubscriptionIfNotExists(client, SUB_BITEFLOW_CHAT_MESSAGE, TOPIC_BITEFLOW_CHAT_MESSAGE);
             createSubscriptionIfNotExists(client, SUB_IFOOD_ORDER_PLACED, TOPIC_IFOOD_ORDER_PLACED);
             createSubscriptionIfNotExists(client, SUB_IFOOD_ORDER_STATUS_CHANGED, TOPIC_IFOOD_ORDER_STATUS_CHANGED);
+            createSubscriptionIfNotExists(client, SUB_IFOOD_CHAT_MESSAGE, TOPIC_IFOOD_CHAT_MESSAGE);
         }
     }
 

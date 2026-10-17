@@ -11,6 +11,7 @@ import com.google.pubsub.v1.PubsubMessage;
 
 import com.fidecode.biteflowifood.application.dto.IfoodOrderPlacedEvent;
 import com.fidecode.biteflowifood.application.dto.IfoodOrderStatusChangedEvent;
+import com.fidecode.biteflowifood.application.dto.IfoodChatMessageReceivedEvent;
 import com.fidecode.biteflowifood.application.port.OrderEventPublisher;
 import com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationException;
 
@@ -39,6 +40,7 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
     private static final String PROJECT = "biteflow-dev";
     private static final String TOPIC_PLACED = "ifood-order-placed";
     private static final String TOPIC_STATUS_CHANGED = "ifood-order-status-changed";
+    private static final String TOPIC_CHAT_MESSAGE = "ifood-chat-message";
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")
     Optional<String> emulatorEndpoint;
@@ -51,6 +53,7 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
 
     private Publisher placedPublisher;
     private Publisher statusChangedPublisher;
+    private Publisher chatMessagePublisher;
     private ManagedChannel channel;
 
     @PostConstruct
@@ -58,6 +61,7 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
         try {
             placedPublisher = buildPublisher(TOPIC_PLACED);
             statusChangedPublisher = buildPublisher(TOPIC_STATUS_CHANGED);
+            chatMessagePublisher = buildPublisher(TOPIC_CHAT_MESSAGE);
             LOG.info("[PUBSUB-PUB] Publishers inicializados.");
         } catch (Exception e) {
             LOG.errorf(e, "[PUBSUB-PUB] Erro ao inicializar publishers: %s", e.getMessage());
@@ -68,6 +72,7 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
     void shutdown() {
         shutdownPublisher(placedPublisher);
         shutdownPublisher(statusChangedPublisher);
+        shutdownPublisher(chatMessagePublisher);
         if (channel != null) channel.shutdownNow();
     }
 
@@ -79,6 +84,11 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
     @Override
     public void publishOrderStatusChanged(IfoodOrderStatusChangedEvent event) {
         publish(statusChangedPublisher, event, TOPIC_STATUS_CHANGED);
+    }
+
+    @Override
+    public void publishChatMessage(IfoodChatMessageReceivedEvent event) {
+        publish(chatMessagePublisher, event, TOPIC_CHAT_MESSAGE);
     }
 
     private void publish(Publisher publisher, Object payload, String topic) {

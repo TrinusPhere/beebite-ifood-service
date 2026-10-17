@@ -17,7 +17,8 @@ public enum IfoodOrderStatus {
     DISPATCHED,           // DSP — Saiu para entrega
     CONCLUDED,            // CON — Concluído
     CANCELLED,            // CAN — Cancelado
-    CANCELLATION_REQUESTED; // RCA — Cancelamento solicitado pelo cliente
+    CANCELLATION_REQUESTED, // RCA — Cancelamento solicitado pelo cliente
+    CHAT_MESSAGE;         // CHM — Mensagem de chat recebida
 
     private static final Map<String, IfoodOrderStatus> CODE_MAP = Map.of(
             "PLC", PLACED,
@@ -27,7 +28,8 @@ public enum IfoodOrderStatus {
             "DSP", DISPATCHED,
             "CON", CONCLUDED,
             "CAN", CANCELLED,
-            "RCA", CANCELLATION_REQUESTED
+            "RCA", CANCELLATION_REQUESTED,
+            "CHM", CHAT_MESSAGE
     );
 
     /**

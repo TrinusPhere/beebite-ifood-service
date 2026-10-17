@@ -2,6 +2,7 @@ package com.fidecode.biteflowifood.application.usecase;
 
 import com.fidecode.biteflowifood.application.dto.*;
 import com.fidecode.biteflowifood.application.port.IfoodAuthClient;
+import com.fidecode.biteflowifood.application.port.IfoodChatClient;
 import com.fidecode.biteflowifood.application.port.IfoodEventClient;
 import com.fidecode.biteflowifood.application.port.IfoodOrderClient;
 import com.fidecode.biteflowifood.application.port.OrderEventPublisher;
@@ -42,6 +43,7 @@ public class PollIfoodEventsUseCase {
     private final IfoodAuthClient authClient;
     private final IfoodEventClient eventClient;
     private final IfoodOrderClient orderClient;
+    private final IfoodChatClient chatClient;
     private final OrderEventPublisher eventPublisher;
     private final SecretEncryptor secretEncryptor;
 
@@ -51,6 +53,7 @@ public class PollIfoodEventsUseCase {
                                    IfoodAuthClient authClient,
                                    IfoodEventClient eventClient,
                                    IfoodOrderClient orderClient,
+                                   IfoodChatClient chatClient,
                                    OrderEventPublisher eventPublisher,
                                    SecretEncryptor secretEncryptor) {
         this.credentialRepository = credentialRepository;
@@ -58,6 +61,7 @@ public class PollIfoodEventsUseCase {
         this.authClient = authClient;
         this.eventClient = eventClient;
         this.orderClient = orderClient;
+        this.chatClient = chatClient;
         this.eventPublisher = eventPublisher;
         this.secretEncryptor = secretEncryptor;
     }
@@ -139,6 +143,8 @@ public class PollIfoodEventsUseCase {
 
         if (status == IfoodOrderStatus.PLACED) {
             handlePlacedOrder(credential, event, token);
+        } else if (status == IfoodOrderStatus.CHAT_MESSAGE) {
+            handleChatMessage(credential, event, token);
         } else {
             handleStatusChange(credential, event, status);
         }
@@ -150,6 +156,34 @@ public class PollIfoodEventsUseCase {
         eventPublisher.publishOrderPlaced(placedEvent);
         LOG.infof("[IFOOD-POLL] Novo pedido publicado: displayId=%s storeId=%s",
                 details.displayId(), credential.getStoreId());
+    }
+
+    private void handleChatMessage(IfoodCredential credential, IfoodEvent event, String token) {
+        // Fetch the message from iFood chat API (if needed) or extract from event metadata
+        // For standard integration, let's assume we fetch the latest messages or the event contains it
+        String messageContent = (String) event.getMetadata().get("text");
+        String senderId = (String) event.getMetadata().get("senderId");
+        if (messageContent == null) {
+             // Se não vier no metadata, buscar as mensagens
+             var messages = chatClient.getMessages(token, event.getOrderId());
+             if (!messages.isEmpty()) {
+                 var lastMessage = messages.get(messages.size() - 1);
+                 messageContent = lastMessage.content();
+                 senderId = lastMessage.sender();
+             }
+        }
+        if (messageContent != null) {
+            IfoodChatMessageReceivedEvent chatEvent = new IfoodChatMessageReceivedEvent(
+                    credential.getStoreId(),
+                    event.getOrderId(),
+                    event.getId(),
+                    messageContent,
+                    senderId != null ? senderId : "CUSTOMER",
+                    java.time.Instant.now()
+            );
+            eventPublisher.publishChatMessage(chatEvent);
+            LOG.infof("[IFOOD-POLL] Chat recebido orderId=%s storeId=%s", event.getOrderId(), credential.getStoreId());
+        }
     }
 
     private void handleStatusChange(IfoodCredential credential, IfoodEvent event, IfoodOrderStatus status) {

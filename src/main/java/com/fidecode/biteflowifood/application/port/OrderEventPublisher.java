@@ -15,4 +15,7 @@ public interface OrderEventPublisher {
 
     /** Publica evento de mudança de status de pedido iFood no tópico ifood-order-status-changed. */
     void publishOrderStatusChanged(IfoodOrderStatusChangedEvent event);
+
+    /** Publica evento de recebimento de mensagem no chat. */
+    void publishChatMessage(com.fidecode.biteflowifood.application.dto.IfoodChatMessageReceivedEvent event);
 }
