@@ -1,0 +1,61 @@
+package com.fidecode.biteflowifood.application.usecase;
+
+import com.fidecode.biteflowifood.application.dto.BiteflowOrderCancelledEvent;
+import com.fidecode.biteflowifood.application.port.IfoodOrderClient;
+import com.fidecode.biteflowifood.domain.credential.entity.IfoodCredential;
+import com.fidecode.biteflowifood.domain.credential.repository.IfoodCredentialRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class CancelOnIfoodUseCaseTest {
+
+    @Mock IfoodCredentialRepository credentialRepository;
+    @Mock IfoodOrderClient orderClient;
+    @InjectMocks CancelOnIfoodUseCase useCase;
+
+    private final UUID storeId = UUID.randomUUID();
+
+    private IfoodCredential credential(boolean enabled, LocalDateTime tokenExpiresAt) {
+        return IfoodCredential.reconstitute(
+                UUID.randomUUID(), storeId, "cid", "enc-secret", "mid",
+                "valid-token", "refresh-token", "auth-code", tokenExpiresAt,
+                enabled, LocalDateTime.now(), LocalDateTime.now());
+    }
+
+    private BiteflowOrderCancelledEvent event() {
+        return new BiteflowOrderCancelledEvent(storeId, UUID.randomUUID(), "ifood-order-id",
+                "503", "Item indisponível", Instant.now());
+    }
+
+    @Test
+    void shouldForwardCancellationCodeAndReasonToIfood() {
+        when(credentialRepository.findByStoreId(storeId))
+                .thenReturn(Optional.of(credential(true, LocalDateTime.now().plusHours(1))));
+
+        useCase.execute(event());
+
+        verify(orderClient).requestCancellation("valid-token", "ifood-order-id", "503", "Item indisponível");
+    }
+
+    @Test
+    void shouldNotCallIfoodWhenIntegrationIsDisabled() {
+        when(credentialRepository.findByStoreId(storeId))
+                .thenReturn(Optional.of(credential(false, LocalDateTime.now().plusHours(1))));
+
+        useCase.execute(event());
+
+        verify(orderClient, never()).requestCancellation(any(), any(), any(), any());
+    }
+}

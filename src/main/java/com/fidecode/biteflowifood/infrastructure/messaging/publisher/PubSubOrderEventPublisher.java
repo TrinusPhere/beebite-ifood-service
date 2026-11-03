@@ -41,6 +41,8 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
     private static final String TOPIC_PLACED = "ifood-order-placed";
     private static final String TOPIC_STATUS_CHANGED = "ifood-order-status-changed";
     private static final String TOPIC_CHAT_MESSAGE = "ifood-chat-message";
+    private static final String TOPIC_DISPUTE = "ifood-order-dispute";
+    private static final String TOPIC_CANCELLATION_REQUESTED = "ifood-order-cancellation-requested";
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")
     Optional<String> emulatorEndpoint;
@@ -54,6 +56,8 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
     private Publisher placedPublisher;
     private Publisher statusChangedPublisher;
     private Publisher chatMessagePublisher;
+    private Publisher disputePublisher;
+    private Publisher cancellationRequestedPublisher;
     private ManagedChannel channel;
 
     @PostConstruct
@@ -62,6 +66,8 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
             placedPublisher = buildPublisher(TOPIC_PLACED);
             statusChangedPublisher = buildPublisher(TOPIC_STATUS_CHANGED);
             chatMessagePublisher = buildPublisher(TOPIC_CHAT_MESSAGE);
+            disputePublisher = buildPublisher(TOPIC_DISPUTE);
+            cancellationRequestedPublisher = buildPublisher(TOPIC_CANCELLATION_REQUESTED);
             LOG.info("[PUBSUB-PUB] Publishers inicializados.");
         } catch (Exception e) {
             LOG.errorf(e, "[PUBSUB-PUB] Erro ao inicializar publishers: %s", e.getMessage());
@@ -73,6 +79,8 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
         shutdownPublisher(placedPublisher);
         shutdownPublisher(statusChangedPublisher);
         shutdownPublisher(chatMessagePublisher);
+        shutdownPublisher(disputePublisher);
+        shutdownPublisher(cancellationRequestedPublisher);
         if (channel != null) channel.shutdownNow();
     }
 
@@ -87,8 +95,24 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
     }
 
     @Override
+    @Deprecated
     public void publishChatMessage(IfoodChatMessageReceivedEvent event) {
         publish(chatMessagePublisher, event, TOPIC_CHAT_MESSAGE);
+    }
+
+    @Override
+    public void publishDisputeReceived(com.fidecode.biteflowifood.application.dto.IfoodDisputeReceivedEvent event) {
+        publish(disputePublisher, event, TOPIC_DISPUTE);
+    }
+
+    @Override
+    public void publishDisputeSettled(com.fidecode.biteflowifood.application.dto.IfoodDisputeSettledEvent event) {
+        publish(disputePublisher, event, TOPIC_DISPUTE);
+    }
+
+    @Override
+    public void publishCancellationRequested(com.fidecode.biteflowifood.application.dto.IfoodCancellationRequestedEvent event) {
+        publish(cancellationRequestedPublisher, event, TOPIC_CANCELLATION_REQUESTED);
     }
 
     private void publish(Publisher publisher, Object payload, String topic) {

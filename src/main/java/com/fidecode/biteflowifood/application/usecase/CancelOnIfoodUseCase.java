@@ -36,7 +36,8 @@ public class CancelOnIfoodUseCase {
             return;
         }
 
-        orderClient.requestCancellation(cred.getAccessToken(), event.ifoodOrderId(), event.cancellationCode());
+        orderClient.requestCancellation(cred.getAccessToken(), event.ifoodOrderId(),
+                event.cancellationCode(), event.reason());
         LOG.infof("[CANCEL-IFOOD] Cancelamento solicitado: orderId=%s reason=%s",
                 event.ifoodOrderId(), event.reason());
     }

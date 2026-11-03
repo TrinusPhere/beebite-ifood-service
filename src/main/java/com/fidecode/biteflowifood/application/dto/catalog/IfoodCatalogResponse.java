@@ -83,4 +83,19 @@ public class IfoodCatalogResponse {
             String status,
             String externalCode) {
     }
+
+    public record IfoodUnsellableCategory(
+            String id,
+            String name,
+            String status,
+            List<IfoodUnsellableItem> items,
+            List<String> restrictions) {
+    }
+
+    public record IfoodUnsellableItem(
+            String id,
+            String name,
+            String status,
+            List<String> restrictions) {
+    }
 }

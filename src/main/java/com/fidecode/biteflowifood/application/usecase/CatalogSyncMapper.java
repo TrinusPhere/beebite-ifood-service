@@ -25,20 +25,11 @@ public final class CatalogSyncMapper {
         String imageUrl = prod != null ? prod.imagePath() : null;
 
         BigDecimal basePrice = BigDecimal.ZERO;
-        try {
-            java.io.FileWriter fw = new java.io.FileWriter("debug_import.log", true);
-            fw.write("[BITEFLOW-DEBUG] Processing: " + name + "\n");
-            if (data.price() != null && data.price().value() != null) {
-                basePrice = data.price().value();
-            } else if (data.contextModifiers() != null) {
-                basePrice = extractPriceFromContextModifiers(data.contextModifiers());
-                fw.write("[BITEFLOW-DEBUG] Extracted price from contextModifiers: " + basePrice + ", JSON: " + data.contextModifiers().toString() + "\n");
-            } else {
-                fw.write("[BITEFLOW-DEBUG] No price or contextModifiers found for " + name + "\n");
-            }
-            fw.write("[BITEFLOW-DEBUG] Final basePrice for " + name + ": " + basePrice + "\n");
-            fw.close();
-        } catch (Exception e) {}
+        if (data.price() != null && data.price().value() != null) {
+            basePrice = data.price().value();
+        } else if (data.contextModifiers() != null) {
+            basePrice = extractPriceFromContextModifiers(data.contextModifiers());
+        }
 
         List<ChannelPriceDto> channelPrices = new ArrayList<>();
         if (basePrice.compareTo(BigDecimal.ZERO) > 0) {

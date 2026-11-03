@@ -17,6 +17,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * @deprecated Rota REST /chat/v1.0/... não existe no iFood. O chat é oferecido exclusivamente via Widget JS oficial.
+ */
+@Deprecated(forRemoval = true)
 @ApplicationScoped
 public class IfoodChatRestClient implements IfoodChatClient {
 

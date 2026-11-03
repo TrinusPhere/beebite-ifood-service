@@ -73,6 +73,9 @@ public class BiteflowStatusChangeSubscriber {
                     syncStatusUseCase.execute(evt);
                     consumer.ack();
                     LOG.debugf("[SUB-STATUS] Processado: storeId=%s status=%s", evt.storeId(), evt.newStatus());
+                } catch (com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationException e) {
+                    LOG.errorf(e, "[SUB-STATUS] Erro de integração iFood transitório — NACK para retentativa do Pub/Sub: %s", e.getMessage());
+                    consumer.nack(); // Reprocessar: falha transitória com a API do iFood
                 } catch (com.fidecode.biteflowifood.domain.shared.exception.DomainException e) {
                     LOG.warnf("[SUB-STATUS] Erro de negócio ao processar evento: %s", e.getMessage());
                     consumer.ack(); // Não reprocessar: erro de negócio não vai mudar

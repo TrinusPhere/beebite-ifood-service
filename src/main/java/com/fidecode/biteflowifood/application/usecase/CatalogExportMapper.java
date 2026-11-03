@@ -107,6 +107,21 @@ public final class CatalogExportMapper {
             price = product.price();
         }
 
+        List<IfoodContextModifier> contextModifiers = new ArrayList<>();
+        if (product.channelPrices() != null) {
+            for (ChannelPriceDto cp : product.channelPrices()) {
+                String ctx = mapChannelToContext(cp.channel());
+                if (ctx != null && cp.price() != null) {
+                    contextModifiers.add(new IfoodContextModifier(
+                            ctx,
+                            new IfoodPrice(cp.price(), cp.price()),
+                            product.status() != null ? product.status() : "AVAILABLE",
+                            product.externalCode()
+                    ));
+                }
+            }
+        }
+
         // iFood v2.0: item precisa de name, description, serves, productId
         IfoodItemData itemData = new IfoodItemData(
                 generatedItemId, // Use generated ID instead of Biteflow ID to prevent duplicate ID issues with product ID
@@ -118,7 +133,9 @@ public final class CatalogExportMapper {
                 product.status() != null ? product.status() : "AVAILABLE",
                 new IfoodPrice(price, price),
                 product.externalCode(),
-                "NOT_APPLICABLE" // serves: padrão para lanches
+                "NOT_APPLICABLE", // serves: padrão para lanches
+                contextModifiers.isEmpty() ? null : contextModifiers,
+                null
         );
 
         return new IfoodCreateProductRequest(
@@ -127,6 +144,15 @@ public final class CatalogExportMapper {
                 optionGroups,
                 options
         );
+    }
+
+    public static String mapChannelToContext(String channel) {
+        if (channel == null) return null;
+        return switch (channel.toUpperCase()) {
+            case "WHITELABEL", "DIGITAL_MENU" -> "WHITELABEL";
+            case "INDOOR", "PDV", "SALES", "LOCAL" -> "INDOOR";
+            default -> null; // IFOOD/DEFAULT é o preço base na raiz do item
+        };
     }
 
     private static String mapModifierSemanticType(String semanticType) {

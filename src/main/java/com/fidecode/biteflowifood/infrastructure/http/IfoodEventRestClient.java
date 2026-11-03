@@ -23,7 +23,7 @@ import java.util.Map;
 
 /**
  * Implementação HTTP do IfoodEventClient.
- * Polling: GET /events/v1.0/events:polling
+ * Polling: GET /events/v1.0/events:polling (header x-polling-merchants filtra pelo merchant da loja)
  * ACK:     POST /events/v1.0/events/acknowledgment
  */
 @ApplicationScoped
@@ -31,6 +31,8 @@ public class IfoodEventRestClient implements IfoodEventClient {
 
     private static final String POLLING_PATH = "/events/v1.0/events:polling";
     private static final String ACK_PATH = "/events/v1.0/events/acknowledgment";
+    private static final String POLLING_MERCHANTS_HEADER = "x-polling-merchants";
+    private static final int MAX_ACK_BATCH_SIZE = 2000;
 
     @ConfigProperty(name = "biteflow.ifood.base-url")
     String baseUrl;
@@ -44,9 +46,16 @@ public class IfoodEventRestClient implements IfoodEventClient {
 
     @Override
     public List<IfoodEvent> pollEvents(String accessToken, String merchantId) {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + POLLING_PATH))
-                .header("Authorization", "Bearer " + accessToken)
+                .header("Authorization", "Bearer " + accessToken);
+
+        // Sem este header o iFood devolve eventos de todos os merchants do token (multi-loja).
+        if (merchantId != null && !merchantId.isBlank()) {
+            builder.header(POLLING_MERCHANTS_HEADER, merchantId);
+        }
+
+        HttpRequest request = builder
                 .GET()
                 .timeout(Duration.ofSeconds(15))
                 .build();
@@ -79,8 +88,16 @@ public class IfoodEventRestClient implements IfoodEventClient {
     public void acknowledgeEvents(String accessToken, List<String> eventIds) {
         if (eventIds == null || eventIds.isEmpty()) return;
 
+        // Documentação iFood: ACK suporta no máximo 2000 IDs por requisição.
+        for (int i = 0; i < eventIds.size(); i += MAX_ACK_BATCH_SIZE) {
+            List<String> batch = eventIds.subList(i, Math.min(i + MAX_ACK_BATCH_SIZE, eventIds.size()));
+            sendAckBatch(accessToken, batch);
+        }
+    }
+
+    private void sendAckBatch(String accessToken, List<String> batch) {
         try {
-            List<Map<String, String>> ackBody = eventIds.stream()
+            List<Map<String, String>> ackBody = batch.stream()
                     .map(id -> Map.of("id", id))
                     .toList();
             String bodyJson = objectMapper.writeValueAsString(ackBody);

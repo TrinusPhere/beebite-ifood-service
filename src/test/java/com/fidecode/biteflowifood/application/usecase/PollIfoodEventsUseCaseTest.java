@@ -158,6 +158,216 @@ class PollIfoodEventsUseCaseTest {
         verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-cfm")));
     }
 
+    @Test
+    void shouldIgnoreAndNotAckEventsFromOtherMerchants() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        IfoodEvent foreignEvent = new IfoodEvent(
+                "evt-foreign", "CAN", "CANCELLED", "order-of-other-store",
+                "other-merchant", Instant.now(), "IFOOD", Map.of()
+        );
+        IfoodEvent ownEvent = new IfoodEvent(
+                "evt-own", "CAN", "CANCELLED", "my-order",
+                "mid", Instant.now(), "IFOOD", Map.of()
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(foreignEvent, ownEvent));
+        when(processedEventRepository.exists("evt-own")).thenReturn(false);
+
+        useCase.execute();
+
+        // evento de outra loja: não processa, não marca como processado e NÃO confirma (ACK)
+        verify(processedEventRepository, never()).exists("evt-foreign");
+        verify(processedEventRepository, never()).markProcessed(eq("evt-foreign"), any());
+        verify(eventPublisher, times(1)).publishOrderStatusChanged(any());
+        verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-own")));
+    }
+
+    @Test
+    void shouldKeepProcessingBatchAndAckOnlySuccessfulEventsWhenOneFails() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        IfoodEvent failingPlaced = new IfoodEvent(
+                "evt-fail", "PLC", "PLACED", "order-fail",
+                "mid", Instant.now(), "IFOOD", Map.of()
+        );
+        IfoodEvent okCancel = new IfoodEvent(
+                "evt-ok", "CAN", "CANCELLED", "order-ok",
+                "mid", Instant.now(), "IFOOD", Map.of()
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(failingPlaced, okCancel));
+        when(processedEventRepository.exists("evt-fail")).thenReturn(false);
+        when(processedEventRepository.exists("evt-ok")).thenReturn(false);
+        when(orderClient.getOrderDetails("valid-token", "order-fail"))
+                .thenThrow(new com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationException("boom"));
+
+        useCase.execute();
+
+        // o evento seguinte ainda é processado
+        verify(eventPublisher).publishOrderStatusChanged(argThat(e -> "order-ok".equals(e.ifoodOrderId())));
+        verify(processedEventRepository).markProcessed("evt-ok", storeId);
+        // o que falhou não é marcado como processado e não é confirmado: o iFood reenvia no próximo ciclo
+        verify(processedEventRepository, never()).markProcessed(eq("evt-fail"), any());
+        verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-ok")));
+    }
+
+    @Test
+    void shouldAckDuplicatesEvenWhenAnotherEventInTheBatchFails() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        IfoodEvent duplicate = new IfoodEvent(
+                "evt-dup", "CAN", "CANCELLED", "order-dup",
+                "mid", Instant.now(), "IFOOD", Map.of()
+        );
+        IfoodEvent failing = new IfoodEvent(
+                "evt-fail", "PLC", "PLACED", "order-fail",
+                "mid", Instant.now(), "IFOOD", Map.of()
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(duplicate, failing));
+        when(processedEventRepository.exists("evt-dup")).thenReturn(true);
+        when(processedEventRepository.exists("evt-fail")).thenReturn(false);
+        when(orderClient.getOrderDetails("valid-token", "order-fail"))
+                .thenThrow(new RuntimeException("boom"));
+
+        useCase.execute();
+
+        verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-dup")));
+    }
+
+    @Test
+    void shouldProcessEventsInChronologicalOrderByCreatedAt() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        Instant t0 = Instant.parse("2026-10-21T10:00:00Z");
+        Instant t1 = Instant.parse("2026-10-21T10:05:00Z");
+
+        // Chegam na ordem inversa (t1 antes de t0)
+        IfoodEvent laterEvent = new IfoodEvent(
+                "evt-later", "DSP", "DISPATCHED", "order-1",
+                "mid", t1, "IFOOD", Map.of()
+        );
+        IfoodEvent earlierEvent = new IfoodEvent(
+                "evt-earlier", "CAN", "CANCELLED", "order-1",
+                "mid", t0, "IFOOD", Map.of()
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(laterEvent, earlierEvent));
+        when(processedEventRepository.exists(anyString())).thenReturn(false);
+
+        useCase.execute();
+
+        // O mais antigo (t0) deve ser processado antes do mais recente (t1)
+        org.mockito.InOrder inOrder = inOrder(eventPublisher);
+        inOrder.verify(eventPublisher).publishOrderStatusChanged(argThat(e -> "CANCELADO".equals(e.newBiteflowStatus())));
+        inOrder.verify(eventPublisher).publishOrderStatusChanged(argThat(e -> "EM_ROTA".equals(e.newBiteflowStatus())));
+    }
+
+    @Test
+    void shouldAcknowledgeAndDiscardUnknownEventCodes() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        IfoodEvent unknownEvent = new IfoodEvent(
+                "evt-unknown", "TOTALLY_UNKNOWN_CODE", "SOME_STATUS", "order-1",
+                "mid", Instant.now(), "IFOOD", Map.of()
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(unknownEvent));
+        when(processedEventRepository.exists("evt-unknown")).thenReturn(false);
+
+        useCase.execute();
+
+        verifyNoInteractions(eventPublisher, orderClient);
+        verify(processedEventRepository).markProcessed("evt-unknown", storeId);
+        verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-unknown")));
+    }
+
+    @Test
+    void shouldPublishDisputeReceivedWhenHsdEventReceived() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        Map<String, Object> meta = Map.of(
+                "disputeId", "disp-456",
+                "handshakeType", "AFTER_DELIVERY",
+                "expiresAt", "2026-10-22T10:00:00Z",
+                "timeoutAction", "ACCEPT_CANCELLATION"
+        );
+        IfoodEvent hsdEvent = new IfoodEvent(
+                "evt-hsd", "HSD", "HANDSHAKE_DISPUTE", "order-123",
+                "mid", Instant.now(), "IFOOD", meta
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(hsdEvent));
+        when(processedEventRepository.exists("evt-hsd")).thenReturn(false);
+
+        useCase.execute();
+
+        verify(eventPublisher).publishDisputeReceived(argThat(e ->
+                "disp-456".equals(e.disputeId()) &&
+                "order-123".equals(e.orderId()) &&
+                "AFTER_DELIVERY".equals(e.handshakeType()) &&
+                storeId.equals(e.storeId())
+        ));
+        verify(processedEventRepository).markProcessed("evt-hsd", storeId);
+        verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-hsd")));
+    }
+
+    @Test
+    void shouldPublishDisputeSettledWhenHssEventReceived() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        Map<String, Object> meta = Map.of(
+                "disputeId", "disp-456",
+                "status", "ACCEPTED"
+        );
+        IfoodEvent hssEvent = new IfoodEvent(
+                "evt-hss", "HSS", "HANDSHAKE_SETTLEMENT", "order-123",
+                "mid", Instant.now(), "IFOOD", meta
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(hssEvent));
+        when(processedEventRepository.exists("evt-hss")).thenReturn(false);
+
+        useCase.execute();
+
+        verify(eventPublisher).publishDisputeSettled(argThat(e ->
+                "disp-456".equals(e.disputeId()) &&
+                "ACCEPTED".equals(e.status()) &&
+                storeId.equals(e.storeId())
+        ));
+        verify(processedEventRepository).markProcessed("evt-hss", storeId);
+        verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-hss")));
+    }
+
+    @Test
+    void shouldPublishCancellationRequestedWhenCarEventReceived() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        Map<String, Object> meta = Map.of(
+                "reason_code", "501",
+                "details", "Cliente ligou desistindo"
+        );
+        IfoodEvent carEvent = new IfoodEvent(
+                "evt-car", "CAR", "CANCELLATION_REQUESTED", "order-123",
+                "mid", Instant.now(), "IFOOD", meta
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(carEvent));
+        when(processedEventRepository.exists("evt-car")).thenReturn(false);
+
+        useCase.execute();
+
+        verify(eventPublisher).publishCancellationRequested(argThat(e ->
+                "501".equals(e.reasonCode()) &&
+                "Cliente ligou desistindo".equals(e.details()) &&
+                "order-123".equals(e.orderId()) &&
+                storeId.equals(e.storeId())
+        ));
+        verify(processedEventRepository).markProcessed("evt-car", storeId);
+        verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-car")));
+    }
+
     private IfoodOrderDetails buildFakeOrderDetails(String orderId) {
         return new IfoodOrderDetails(
                 orderId, "N4K7", null, Instant.now().toString(),

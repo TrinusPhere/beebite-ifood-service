@@ -16,6 +16,18 @@ public interface OrderEventPublisher {
     /** Publica evento de mudança de status de pedido iFood no tópico ifood-order-status-changed. */
     void publishOrderStatusChanged(IfoodOrderStatusChangedEvent event);
 
-    /** Publica evento de recebimento de mensagem no chat. */
+    /**
+     * @deprecated O chat oficial é oferecido exclusivamente via Widget JS do iFood.
+     */
+    @Deprecated
     void publishChatMessage(com.fidecode.biteflowifood.application.dto.IfoodChatMessageReceivedEvent event);
+
+    /** Publica evento de disputa/negociação aberta pelo cliente ou iFood (HSD). */
+    void publishDisputeReceived(com.fidecode.biteflowifood.application.dto.IfoodDisputeReceivedEvent event);
+
+    /** Publica evento de resolução/encerramento de disputa (HSS). */
+    void publishDisputeSettled(com.fidecode.biteflowifood.application.dto.IfoodDisputeSettledEvent event);
+
+    /** Publica evento de solicitação de cancelamento pelo cliente (CAR). */
+    void publishCancellationRequested(com.fidecode.biteflowifood.application.dto.IfoodCancellationRequestedEvent event);
 }

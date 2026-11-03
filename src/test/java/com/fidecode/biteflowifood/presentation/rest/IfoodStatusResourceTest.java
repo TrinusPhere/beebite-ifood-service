@@ -4,31 +4,34 @@ import com.fidecode.biteflowifood.application.dto.GetStatusResponse;
 import com.fidecode.biteflowifood.application.dto.ToggleStoreRequest;
 import com.fidecode.biteflowifood.application.usecase.GetIfoodStatusUseCase;
 import com.fidecode.biteflowifood.application.usecase.ToggleIfoodStoreUseCase;
-
-import io.quarkus.test.InjectMock;
-import io.quarkus.test.junit.QuarkusTest;
-import io.restassured.http.ContentType;
-
+import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.UUID;
 
-import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@QuarkusTest
+@ExtendWith(MockitoExtension.class)
 class IfoodStatusResourceTest {
 
-    @InjectMock
+    @Mock
     GetIfoodStatusUseCase getStatusUseCase;
 
-    @InjectMock
+    @Mock
     ToggleIfoodStoreUseCase toggleStoreUseCase;
+
+    @InjectMocks
+    IfoodStatusResource resource;
 
     @Test
     void shouldReturnStatus() {
@@ -36,25 +39,22 @@ class IfoodStatusResourceTest {
         GetStatusResponse mockResponse = new GetStatusResponse(true, Collections.emptyList());
         when(getStatusUseCase.execute(storeId)).thenReturn(mockResponse);
 
-        given()
-            .when().get("/api/v1/ifood/status/" + storeId + "/merchant")
-            .then()
-            .statusCode(200)
-            .body("isOpen", is(true));
+        Response response = resource.getStatus(storeId);
+
+        assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+        assertEquals(mockResponse, response.getEntity());
+        verify(getStatusUseCase).execute(storeId);
     }
 
     @Test
     void shouldToggleStore() {
         UUID storeId = UUID.randomUUID();
         ToggleStoreRequest request = new ToggleStoreRequest("CLOSE", "Motivo de Teste");
-
         doNothing().when(toggleStoreUseCase).execute(eq(storeId), any(ToggleStoreRequest.class));
 
-        given()
-            .contentType(ContentType.JSON)
-            .body(request)
-            .when().post("/api/v1/ifood/status/" + storeId + "/merchant/toggle")
-            .then()
-            .statusCode(204);
+        Response response = resource.toggleStore(storeId, request);
+
+        assertEquals(Response.Status.NO_CONTENT.getStatusCode(), response.getStatus());
+        verify(toggleStoreUseCase).execute(storeId, request);
     }
 }

@@ -9,4 +9,5 @@ public interface IfoodCatalogClient {
     IfoodCategoryItemsResponse listCategoryItems(String token, String merchantId, String categoryId);
     IfoodItemFull getItem(String token, String merchantId, String itemId);
     List<IfoodItemData> listSellableItems(String token, String merchantId);
+    List<IfoodUnsellableCategory> listUnsellableItems(String token, String merchantId);
 }

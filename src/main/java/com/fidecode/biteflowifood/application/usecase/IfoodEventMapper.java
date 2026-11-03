@@ -5,6 +5,7 @@ import com.fidecode.biteflowifood.application.dto.IfoodOrderPlacedEvent;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -12,6 +13,7 @@ import java.util.UUID;
 /**
  * Mapper estático — converte IfoodOrderDetails → IfoodOrderPlacedEvent.
  * Segue P6 (DRY): centraliza a conversão em um único lugar.
+ * Calcula o confirmationDeadline com base no SLA de 8 minutos oficial do iFood.
  */
 final class IfoodEventMapper {
 
@@ -57,13 +59,42 @@ final class IfoodEventMapper {
         String customerPhone = (details.customer() != null && details.customer().phone() != null) ? details.customer().phone().number() : null;
         String customerDoc = details.customer() != null ? details.customer().document() : null;
 
+        // Extrai createdAt oficial retornado pelo iFood em UTC
+        Instant createdAt = null;
+        if (details.createdAt() != null && !details.createdAt().isBlank()) {
+            try {
+                createdAt = Instant.parse(details.createdAt());
+            } catch (Exception ignored) {}
+        }
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+
+        // SLA de confirmação oficial do iFood: 8 minutos
+        // - IMMEDIATE: 8 minutos a partir do createdAt
+        // - SCHEDULED: 8 minutos a partir do preparationStartDateTime
+        Instant confirmationDeadline;
+        if ("SCHEDULED".equalsIgnoreCase(details.orderTiming())
+                && details.schedule() != null
+                && details.schedule().preparationStartDateTime() != null
+                && !details.schedule().preparationStartDateTime().isBlank()) {
+            try {
+                Instant prepStart = Instant.parse(details.schedule().preparationStartDateTime());
+                confirmationDeadline = prepStart.plus(8, ChronoUnit.MINUTES);
+            } catch (Exception e) {
+                confirmationDeadline = createdAt.plus(8, ChronoUnit.MINUTES);
+            }
+        } else {
+            confirmationDeadline = createdAt.plus(8, ChronoUnit.MINUTES);
+        }
+
         return new IfoodOrderPlacedEvent(
                 eventId, storeId, details.id(), details.displayId(),
                 details.orderType(), details.orderTiming(),
                 customerName, customerPhone, customerDoc,
                 address, items, payments,
                 details.subTotal(), deliveryFee, totalAmount,
-                Instant.now()
+                createdAt, confirmationDeadline
         );
     }
 }

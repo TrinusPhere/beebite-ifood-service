@@ -24,7 +24,8 @@ public class IfoodCatalogRestClient implements IfoodCatalogClient {
     private static final String CATEGORIES_PATH = "/catalog/v2.0/merchants/%s/catalogs/%s/categories";
     private static final String CATEGORY_ITEMS_PATH = "/catalog/v2.0/merchants/%s/categories/%s/items";
     private static final String ITEM_PATH = "/catalog/v2.0/merchants/%s/items/%s";
-    private static final String SELLABLE_ITEMS_PATH = "/catalog/v2.0/merchants/%s/sellableItems";
+    private static final String SELLABLE_ITEMS_PATH = "/catalog/v2.0/merchants/%s/catalogs/%s/sellableItems";
+    private static final String UNSELLABLE_ITEMS_PATH = "/catalog/v2.0/merchants/%s/catalogs/%s/unsellableItems";
 
     @ConfigProperty(name = "biteflow.ifood.base-url")
     String baseUrl;
@@ -60,7 +61,6 @@ public class IfoodCatalogRestClient implements IfoodCatalogClient {
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                System.out.println("IFOOD RESPONSE listCategoryItems: " + response.body());
                 return objectMapper.readValue(response.body(), IfoodCategoryItemsResponse.class);
             }
             if (response.statusCode() == 404) return null;
@@ -95,7 +95,18 @@ public class IfoodCatalogRestClient implements IfoodCatalogClient {
 
     @Override
     public List<IfoodItemData> listSellableItems(String token, String merchantId) {
-        return getList(token, String.format(SELLABLE_ITEMS_PATH, merchantId), new TypeReference<>() {});
+        List<IfoodCatalog> catalogs = listCatalogs(token, merchantId);
+        if (catalogs == null || catalogs.isEmpty()) return Collections.emptyList();
+        String catalogId = catalogs.get(0).catalogId();
+        return getList(token, String.format(SELLABLE_ITEMS_PATH, merchantId, catalogId), new TypeReference<>() {});
+    }
+
+    @Override
+    public List<IfoodUnsellableCategory> listUnsellableItems(String token, String merchantId) {
+        List<IfoodCatalog> catalogs = listCatalogs(token, merchantId);
+        if (catalogs == null || catalogs.isEmpty()) return Collections.emptyList();
+        String catalogId = catalogs.get(0).catalogId();
+        return getList(token, String.format(UNSELLABLE_ITEMS_PATH, merchantId, catalogId), new TypeReference<>() {});
     }
 
     private <T> List<T> getList(String token, String path, TypeReference<List<T>> typeReference) {

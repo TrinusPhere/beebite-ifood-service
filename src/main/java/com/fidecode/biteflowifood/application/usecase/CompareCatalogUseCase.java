@@ -51,12 +51,6 @@ public class CompareCatalogUseCase {
         // 2. Obter catálogo do iFood
         List<com.fidecode.biteflowifood.application.dto.catalog.IfoodCatalogResponse.IfoodItemData> sellableItems = ifoodCatalogClient.listSellableItems(token, merchantId);
 
-        try {
-            java.nio.file.Files.writeString(java.nio.file.Paths.get("sellable_items_dump.json"), new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(sellableItems));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
         Map<String, IfoodPrice> sellablePrices = sellableItems.stream()
                 .filter(i -> extractPrice(i) != null)
                 .collect(Collectors.toMap(i -> i.id() != null ? i.id() : i.itemId(), this::extractPrice, (p1, p2) -> p1));

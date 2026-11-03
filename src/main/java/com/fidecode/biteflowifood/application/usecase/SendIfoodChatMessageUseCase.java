@@ -9,6 +9,13 @@ import com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationExcept
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.util.UUID;
+
+/**
+ * @deprecated O iFood não possui API REST pública para envio de chat.
+ * O chat oficial com clientes e entregadores deve ser operado via Widget oficial do iFood.
+ */
+@Deprecated(forRemoval = true)
 @ApplicationScoped
 public class SendIfoodChatMessageUseCase {
 
@@ -29,7 +36,8 @@ public class SendIfoodChatMessageUseCase {
     }
 
     public void execute(String storeId, String orderId, String message) {
-        IfoodCredential credential = credentialRepository.findByStoreId(storeId)
+        UUID storeUuid = UUID.fromString(storeId);
+        IfoodCredential credential = credentialRepository.findByStoreId(storeUuid)
                 .orElseThrow(() -> new IfoodIntegrationException("Credencial iFood não encontrada para a loja " + storeId));
 
         if (!credential.isTokenValid()) {

@@ -28,6 +28,12 @@ public class IfoodCatalogSyncRestClient implements IfoodCatalogSyncClient {
     private static final String CATEGORIES_PATH = "/catalog/v2.0/merchants/%s/catalogs/%s/categories";
     private static final String ITEMS_PATH = "/catalog/v2.0/merchants/%s/items";
     private static final String ITEM_BY_ID_PATH = "/catalog/v2.0/merchants/%s/items/%s";
+    private static final String PRODUCTS_PRICE_PATH = "/catalog/v2.0/merchants/%s/products/price";
+    private static final String PRODUCTS_STATUS_PATH = "/catalog/v2.0/merchants/%s/products/status";
+    private static final String BATCH_PATH = "/catalog/v2.0/merchants/%s/batch/%s";
+    private static final String OPTIONS_PRICE_PATH = "/catalog/v2.0/merchants/%s/options/price";
+    private static final String OPTIONS_STATUS_PATH = "/catalog/v2.0/merchants/%s/options/status";
+    private static final String OPTION_GROUP_STATUS_PATH = "/catalog/v2.0/merchants/%s/optionGroups/%s/status";
 
     @ConfigProperty(name = "biteflow.ifood.base-url")
     String baseUrl;
@@ -99,6 +105,65 @@ public class IfoodCatalogSyncRestClient implements IfoodCatalogSyncClient {
     @Override
     public void updateProductStatus(String token, String merchantId, String itemId, IfoodUpdateStatusRequest request) {
         patch(token, String.format(ITEM_BY_ID_PATH, merchantId, itemId), request);
+    }
+
+    @Override
+    public void patchItem(String token, String merchantId, String itemId, IfoodItemPatchRequest request) {
+        patch(token, String.format(ITEM_BY_ID_PATH, merchantId, itemId), request);
+    }
+
+    @Override
+    public IfoodBatchResponse updateProductsPriceBatch(String token, String merchantId, List<IfoodBatchPriceItem> items) {
+        return patchWithResponse(token, String.format(PRODUCTS_PRICE_PATH, merchantId), items, IfoodBatchResponse.class);
+    }
+
+    @Override
+    public IfoodBatchResponse updateProductsStatusBatch(String token, String merchantId, List<IfoodBatchStatusItem> items) {
+        return patchWithResponse(token, String.format(PRODUCTS_STATUS_PATH, merchantId), items, IfoodBatchResponse.class);
+    }
+
+    @Override
+    public IfoodBatchStatusResponse getBatchStatus(String token, String merchantId, String batchId) {
+        String fullUrl = baseUrl + String.format(BATCH_PATH, merchantId, batchId);
+        try {
+            LOG.infof("[IFOOD-API] GET %s", fullUrl);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(fullUrl))
+                    .header("Authorization", "Bearer " + token)
+                    .GET()
+                    .timeout(Duration.ofSeconds(15))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            LOG.infof("[IFOOD-API] GET %s -> HTTP %d | response: %s", fullUrl, response.statusCode(), response.body());
+
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                return objectMapper.readValue(response.body(), IfoodBatchStatusResponse.class);
+            }
+            throw new IfoodIntegrationException(
+                    "Erro ao buscar status do lote no iFood: HTTP " + response.statusCode() + " | response: " + response.body());
+        } catch (IfoodIntegrationException e) {
+            throw e;
+        } catch (Exception e) {
+            LOG.errorf(e, "[IFOOD-API] Exceção ao chamar GET %s: %s", fullUrl, e.getMessage());
+            throw new IfoodIntegrationException("Erro ao buscar status do lote no iFood: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void updateOptionPrice(String token, String merchantId, IfoodUpdateOptionPriceRequest request) {
+        patch(token, String.format(OPTIONS_PRICE_PATH, merchantId), request);
+    }
+
+    @Override
+    public void updateOptionStatus(String token, String merchantId, IfoodUpdateOptionStatusRequest request) {
+        patch(token, String.format(OPTIONS_STATUS_PATH, merchantId), request);
+    }
+
+    @Override
+    public void updateOptionGroupStatus(String token, String merchantId, String optionGroupId, IfoodUpdateOptionGroupStatusRequest request) {
+        patch(token, String.format(OPTION_GROUP_STATUS_PATH, merchantId, optionGroupId), request);
     }
 
 
@@ -206,6 +271,36 @@ public class IfoodCatalogSyncRestClient implements IfoodCatalogSyncClient {
             }
             throw new IfoodIntegrationException(
                     "Erro ao atualizar no iFood: HTTP " + response.statusCode() + " | response: " + response.body());
+        } catch (IfoodIntegrationException e) {
+            throw e;
+        } catch (Exception e) {
+            LOG.errorf(e, "[IFOOD-API] Exceção ao chamar PATCH %s: %s", fullUrl, e.getMessage());
+            throw new IfoodIntegrationException("Erro ao chamar API do iFood (PATCH " + path + "): " + e.getMessage(), e);
+        }
+    }
+
+    private <T> T patchWithResponse(String token, String path, Object body, Class<T> responseType) {
+        String fullUrl = baseUrl + path;
+        try {
+            String bodyJson = objectMapper.writeValueAsString(body);
+            LOG.infof("[IFOOD-API] PATCH %s | body: %s", fullUrl, bodyJson);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(fullUrl))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json")
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(bodyJson))
+                    .timeout(Duration.ofSeconds(30))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            LOG.infof("[IFOOD-API] PATCH %s -> HTTP %d | response: %s", fullUrl, response.statusCode(), response.body());
+
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                return objectMapper.readValue(response.body(), responseType);
+            }
+            throw new IfoodIntegrationException(
+                    "Erro ao atualizar em lote no iFood: HTTP " + response.statusCode() + " | response: " + response.body());
         } catch (IfoodIntegrationException e) {
             throw e;
         } catch (Exception e) {

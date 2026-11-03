@@ -26,6 +26,11 @@ import org.jboss.logging.Logger;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * @deprecated O iFood não suporta chat via API REST nem eventos de backend.
+ * O chat oficial com clientes é provido exclusivamente pelo Widget JS no frontend.
+ */
+@Deprecated(forRemoval = true)
 @ApplicationScoped
 public class BiteflowChatMessageSubscriber {
 
@@ -38,9 +43,6 @@ public class BiteflowChatMessageSubscriber {
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.use-plaintext")
     Optional<Boolean> usePlaintext;
-
-    @Inject
-    SendIfoodChatMessageUseCase sendIfoodChatMessageUseCase;
 
     @Inject
     ObjectMapper objectMapper;
@@ -92,16 +94,12 @@ public class BiteflowChatMessageSubscriber {
         String payload = message.getData().toStringUtf8();
         try {
             JsonNode root = objectMapper.readTree(payload);
-            String storeId = root.get("storeId").asText();
-            String orderId = root.get("orderId").asText();
-            String chatMessage = root.get("message").asText();
-
-            sendIfoodChatMessageUseCase.execute(storeId, orderId, chatMessage);
+            String orderId = root.has("orderId") ? root.get("orderId").asText() : "desconhecido";
+            LOG.warnf("[PUBSUB-SUB] Mensagem de chat descartada (orderId=%s): o iFood não suporta envio de chat via API/PubSub. O chat deve ser operado pelo Widget oficial do iFood.", orderId);
             consumer.ack();
-            LOG.infof("[PUBSUB-SUB] Mensagem de chat enviada com sucesso para o iFood: orderId=%s", orderId);
         } catch (Exception e) {
-            LOG.errorf(e, "[PUBSUB-SUB] Falha ao processar mensagem de chat do BiteFlow — NACK: %s", e.getMessage());
-            consumer.nack();
+            LOG.warnf(e, "[PUBSUB-SUB] Falha ao ler payload de chat legado: %s", e.getMessage());
+            consumer.ack();
         }
     }
 }

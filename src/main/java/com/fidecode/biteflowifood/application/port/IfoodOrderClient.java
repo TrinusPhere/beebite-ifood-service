@@ -1,7 +1,10 @@
 package com.fidecode.biteflowifood.application.port;
 
+import com.fidecode.biteflowifood.application.dto.IfoodAcceptDisputeRequest;
+import com.fidecode.biteflowifood.application.dto.IfoodAlternativeDisputeRequest;
 import com.fidecode.biteflowifood.application.dto.IfoodCancellationReason;
 import com.fidecode.biteflowifood.application.dto.IfoodOrderDetails;
+import com.fidecode.biteflowifood.application.dto.IfoodRejectDisputeRequest;
 
 import java.util.List;
 
@@ -30,6 +33,27 @@ public interface IfoodOrderClient {
     /** Lista os motivos de cancelamento disponíveis para o pedido. */
     List<IfoodCancellationReason> getCancellationReasons(String accessToken, String orderId);
 
-    /** Solicita o cancelamento do pedido com um motivo. */
-    void requestCancellation(String accessToken, String orderId, String cancellationCode);
+    /**
+     * Solicita o cancelamento do pedido. {@code cancellationCode} deve ser um {@code cancelCodeId}
+     * retornado por {@link #getCancellationReasons}; {@code reason} é o texto livre do motivo.
+     */
+    void requestCancellation(String accessToken, String orderId, String cancellationCode, String reason);
+
+    /**
+     * Aceita a contestação/cancelamento aberto na Plataforma de Negociação (Handshake).
+     * Endpoint: POST /order/v1.0/disputes/{disputeId}/accept
+     */
+    void acceptDispute(String accessToken, String disputeId, IfoodAcceptDisputeRequest request);
+
+    /**
+     * Rejeita a contestação/cancelamento aberto na Plataforma de Negociação (Handshake).
+     * Endpoint: POST /order/v1.0/disputes/{disputeId}/reject
+     */
+    void rejectDispute(String accessToken, String disputeId, IfoodRejectDisputeRequest request);
+
+    /**
+     * Propõe uma alternativa para a disputa (tempo adicional ou reembolso/benefício).
+     * Endpoint: POST /order/v1.0/disputes/{disputeId}/alternative
+     */
+    void proposeDisputeAlternative(String accessToken, String disputeId, IfoodAlternativeDisputeRequest request);
 }

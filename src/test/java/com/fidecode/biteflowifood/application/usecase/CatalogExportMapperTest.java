@@ -89,4 +89,35 @@ class CatalogExportMapperTest {
         assertEquals(0, request.optionGroups().size());
         assertEquals(0, request.options().size());
     }
+
+    @Test
+    void shouldMapChannelPricesToContextModifiers() {
+        ProductResponse product = new ProductResponse(
+                "prod-3", "Pizza Calabresa", "cat-1", "Molho e queijo", new BigDecimal("40.00"), null,
+                null, null, "AVAILABLE", "PIZZA-01", "DEFAULT",
+                List.of(
+                        new ChannelPriceDto("IFOOD", new BigDecimal("45.00")),
+                        new ChannelPriceDto("WHITELABEL", new BigDecimal("42.00")),
+                        new ChannelPriceDto("INDOOR", new BigDecimal("38.00"))
+                ),
+                null, false, null, "UN", true, true, null, null, List.of()
+        );
+
+        IfoodCreateProductRequest request = CatalogExportMapper.toIfoodProduct(product, List.of(), "cat-1", "generated-item-3");
+
+        assertEquals(new BigDecimal("45.00"), request.item().price().value());
+        assertNotNull(request.item().contextModifiers());
+        assertEquals(2, request.item().contextModifiers().size());
+
+        IfoodContextModifier whitelabel = request.item().contextModifiers().stream()
+                .filter(c -> "WHITELABEL".equals(c.catalogContext())).findFirst().orElse(null);
+        assertNotNull(whitelabel);
+        assertEquals(new BigDecimal("42.00"), whitelabel.price().value());
+
+        IfoodContextModifier indoor = request.item().contextModifiers().stream()
+                .filter(c -> "INDOOR".equals(c.catalogContext())).findFirst().orElse(null);
+        assertNotNull(indoor);
+        assertEquals(new BigDecimal("38.00"), indoor.price().value());
+    }
 }
+

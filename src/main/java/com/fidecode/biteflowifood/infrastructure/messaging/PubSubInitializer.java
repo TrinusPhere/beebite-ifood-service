@@ -42,6 +42,8 @@ public class PubSubInitializer {
     private static final String TOPIC_IFOOD_ORDER_PLACED          = "ifood-order-placed";
     private static final String TOPIC_IFOOD_ORDER_STATUS_CHANGED   = "ifood-order-status-changed";
     private static final String TOPIC_IFOOD_CHAT_MESSAGE           = "ifood-chat-message";
+    private static final String TOPIC_IFOOD_DISPUTE                = "ifood-order-dispute";
+    private static final String TOPIC_IFOOD_CANCELLATION_REQUESTED = "ifood-order-cancellation-requested";
 
     // Tópicos publicados pelo BiteFlow (para o serviço de integração consumir)
     private static final String TOPIC_BITEFLOW_STATUS_CHANGED      = "biteflow-order-status-changed";
@@ -107,6 +109,8 @@ public class PubSubInitializer {
             createTopicIfNotExists(client, TOPIC_IFOOD_ORDER_PLACED);
             createTopicIfNotExists(client, TOPIC_IFOOD_ORDER_STATUS_CHANGED);
             createTopicIfNotExists(client, TOPIC_IFOOD_CHAT_MESSAGE);
+            createTopicIfNotExists(client, TOPIC_IFOOD_DISPUTE);
+            createTopicIfNotExists(client, TOPIC_IFOOD_CANCELLATION_REQUESTED);
             createTopicIfNotExists(client, TOPIC_BITEFLOW_STATUS_CHANGED);
             createTopicIfNotExists(client, TOPIC_BITEFLOW_ORDER_CANCELLED);
             createTopicIfNotExists(client, TOPIC_BITEFLOW_CATALOG_CHANGED);

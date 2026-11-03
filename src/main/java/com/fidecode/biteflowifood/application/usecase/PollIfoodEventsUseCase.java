@@ -2,7 +2,6 @@ package com.fidecode.biteflowifood.application.usecase;
 
 import com.fidecode.biteflowifood.application.dto.*;
 import com.fidecode.biteflowifood.application.port.IfoodAuthClient;
-import com.fidecode.biteflowifood.application.port.IfoodChatClient;
 import com.fidecode.biteflowifood.application.port.IfoodEventClient;
 import com.fidecode.biteflowifood.application.port.IfoodOrderClient;
 import com.fidecode.biteflowifood.application.port.OrderEventPublisher;
@@ -19,7 +18,10 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -43,7 +45,6 @@ public class PollIfoodEventsUseCase {
     private final IfoodAuthClient authClient;
     private final IfoodEventClient eventClient;
     private final IfoodOrderClient orderClient;
-    private final IfoodChatClient chatClient;
     private final OrderEventPublisher eventPublisher;
     private final SecretEncryptor secretEncryptor;
 
@@ -53,7 +54,6 @@ public class PollIfoodEventsUseCase {
                                    IfoodAuthClient authClient,
                                    IfoodEventClient eventClient,
                                    IfoodOrderClient orderClient,
-                                   IfoodChatClient chatClient,
                                    OrderEventPublisher eventPublisher,
                                    SecretEncryptor secretEncryptor) {
         this.credentialRepository = credentialRepository;
@@ -61,7 +61,6 @@ public class PollIfoodEventsUseCase {
         this.authClient = authClient;
         this.eventClient = eventClient;
         this.orderClient = orderClient;
-        this.chatClient = chatClient;
         this.eventPublisher = eventPublisher;
         this.secretEncryptor = secretEncryptor;
     }
@@ -88,29 +87,63 @@ public class PollIfoodEventsUseCase {
                 return;
             }
 
-            int processed = 0;
+            // Defesa em profundidade: mesmo com o header x-polling-merchants, nunca processa
+            // nem confirma (ACK) evento de outro merchant — isso o tiraria da fila da loja correta.
+            List<IfoodEvent> ownEvents = new ArrayList<>();
             for (IfoodEvent event : events) {
-                if (!processedEventRepository.exists(event.getId())) {
-                    handleEvent(credential, event, token);
-                    processedEventRepository.markProcessed(event.getId(), credential.getStoreId());
-                    processed++;
+                if (belongsToMerchant(event, merchantId)) {
+                    ownEvents.add(event);
                 } else {
-                    LOG.debugf("[IFOOD-POLL] Evento duplicado ignorado: %s", event.getId());
+                    LOG.warnf("[IFOOD-POLL] Evento %s ignorado: merchant %s diferente do da loja %s",
+                            event.getId(), event.getMerchantId(), credential.getStoreId());
                 }
             }
 
-            // ACK de TODOS os eventos (incluindo duplicatas) — o iFood exige ACK mesmo para já processados
-            List<String> allEventIds = events.stream().map(IfoodEvent::getId).toList();
-            eventClient.acknowledgeEvents(token, allEventIds);
+            // Documentação iFood: ordem de entrega dos eventos não é garantida; ordenar por createdAt.
+            ownEvents.sort(java.util.Comparator.comparing(
+                    IfoodEvent::getCreatedAt,
+                    java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())
+            ));
 
-            LOG.infof("[IFOOD-POLL] store=%s events=%d processed=%d",
-                    credential.getStoreId(), events.size(), processed);
+            // IDs a confirmar: duplicatas + eventos tratados com sucesso.
+            // Evento que falhou NÃO é confirmado — o iFood o reenvia no próximo ciclo (retentativa).
+            List<String> eventIdsToAck = new ArrayList<>();
+            int processed = 0;
+            int failed = 0;
+            for (IfoodEvent event : ownEvents) {
+                if (processedEventRepository.exists(event.getId())) {
+                    LOG.debugf("[IFOOD-POLL] Evento duplicado ignorado: %s", event.getId());
+                    eventIdsToAck.add(event.getId());
+                    continue;
+                }
+                try {
+                    handleEvent(credential, event, token);
+                    processedEventRepository.markProcessed(event.getId(), credential.getStoreId());
+                    eventIdsToAck.add(event.getId());
+                    processed++;
+                } catch (Exception e) {
+                    failed++;
+                    LOG.errorf(e, "[IFOOD-POLL] Falha ao processar evento %s (code=%s orderId=%s) store=%s — será reenviado pelo iFood: %s",
+                            event.getId(), event.getCode(), event.getOrderId(), credential.getStoreId(), e.getMessage());
+                }
+            }
+
+            // O iFood exige ACK de todos os eventos recebidos (inclusive os não utilizados).
+            eventClient.acknowledgeEvents(token, eventIdsToAck);
+
+            LOG.infof("[IFOOD-POLL] store=%s events=%d processed=%d failed=%d",
+                    credential.getStoreId(), events.size(), processed, failed);
 
         } catch (Exception e) {
             LOG.errorf(e, "[IFOOD-POLL] Erro ao processar store=%s: %s",
                     credential.getStoreId(), e.getMessage());
             // Falha nunca derruba o loop — próximo ciclo tentará novamente
         }
+    }
+
+    /** Evento sem merchantId é aceito (o filtro é feito pelo header na API); com merchantId, deve coincidir. */
+    private boolean belongsToMerchant(IfoodEvent event, String merchantId) {
+        return event.getMerchantId() == null || event.getMerchantId().equals(merchantId);
     }
 
     private void ensureValidToken(IfoodCredential credential) {
@@ -143,11 +176,75 @@ public class PollIfoodEventsUseCase {
 
         if (status == IfoodOrderStatus.PLACED) {
             handlePlacedOrder(credential, event, token);
-        } else if (status == IfoodOrderStatus.CHAT_MESSAGE) {
-            handleChatMessage(credential, event, token);
+        } else if (status == IfoodOrderStatus.HANDSHAKE_DISPUTE) {
+            handleHandshakeDispute(credential, event);
+        } else if (status == IfoodOrderStatus.HANDSHAKE_SETTLEMENT) {
+            handleHandshakeSettlement(credential, event);
+        } else if (status == IfoodOrderStatus.CANCELLATION_REQUESTED) {
+            handleCancellationRequested(credential, event);
         } else {
             handleStatusChange(credential, event, status);
         }
+    }
+
+    private void handleHandshakeDispute(IfoodCredential credential, IfoodEvent event) {
+        Map<String, Object> meta = event.getMetadata() != null ? event.getMetadata() : Collections.emptyMap();
+        String disputeId = (String) meta.getOrDefault("disputeId", meta.get("id"));
+        String handshakeType = (String) meta.get("handshakeType");
+        String expiresAt = (String) meta.get("expiresAt");
+        String timeoutAction = (String) meta.get("timeoutAction");
+
+        IfoodDisputeReceivedEvent disputeEvent = new IfoodDisputeReceivedEvent(
+                credential.getStoreId(),
+                event.getOrderId(),
+                disputeId,
+                event.getId(),
+                handshakeType,
+                expiresAt,
+                timeoutAction,
+                meta
+        );
+        eventPublisher.publishDisputeReceived(disputeEvent);
+        LOG.infof("[IFOOD-POLL] Disputa recebida: disputeId=%s orderId=%s storeId=%s",
+                disputeId, event.getOrderId(), credential.getStoreId());
+    }
+
+    private void handleHandshakeSettlement(IfoodCredential credential, IfoodEvent event) {
+        Map<String, Object> meta = event.getMetadata() != null ? event.getMetadata() : Collections.emptyMap();
+        String disputeId = (String) meta.getOrDefault("disputeId", meta.get("id"));
+        String status = (String) meta.get("status");
+
+        IfoodDisputeSettledEvent settledEvent = new IfoodDisputeSettledEvent(
+                credential.getStoreId(),
+                event.getOrderId(),
+                disputeId,
+                event.getId(),
+                status,
+                meta
+        );
+        eventPublisher.publishDisputeSettled(settledEvent);
+        LOG.infof("[IFOOD-POLL] Disputa resolvida: disputeId=%s status=%s orderId=%s storeId=%s",
+                disputeId, status, event.getOrderId(), credential.getStoreId());
+    }
+
+    private void handleCancellationRequested(IfoodCredential credential, IfoodEvent event) {
+        Map<String, Object> meta = event.getMetadata() != null ? event.getMetadata() : Collections.emptyMap();
+        String reasonCode = meta.get("reason_code") != null ? String.valueOf(meta.get("reason_code")) : null;
+        String details = (String) meta.get("details");
+        Instant requestedAt = event.getCreatedAt() != null ? event.getCreatedAt() : Instant.now();
+
+        IfoodCancellationRequestedEvent carEvent = new IfoodCancellationRequestedEvent(
+                credential.getStoreId(),
+                event.getOrderId(),
+                event.getId(),
+                reasonCode,
+                details,
+                meta,
+                requestedAt
+        );
+        eventPublisher.publishCancellationRequested(carEvent);
+        LOG.infof("[IFOOD-POLL] Cancelamento solicitado pelo cliente: orderId=%s reasonCode=%s storeId=%s",
+                event.getOrderId(), reasonCode, credential.getStoreId());
     }
 
     private void handlePlacedOrder(IfoodCredential credential, IfoodEvent event, String token) {
@@ -158,33 +255,6 @@ public class PollIfoodEventsUseCase {
                 details.displayId(), credential.getStoreId());
     }
 
-    private void handleChatMessage(IfoodCredential credential, IfoodEvent event, String token) {
-        // Fetch the message from iFood chat API (if needed) or extract from event metadata
-        // For standard integration, let's assume we fetch the latest messages or the event contains it
-        String messageContent = (String) event.getMetadata().get("text");
-        String senderId = (String) event.getMetadata().get("senderId");
-        if (messageContent == null) {
-             // Se não vier no metadata, buscar as mensagens
-             var messages = chatClient.getMessages(token, event.getOrderId());
-             if (!messages.isEmpty()) {
-                 var lastMessage = messages.get(messages.size() - 1);
-                 messageContent = lastMessage.content();
-                 senderId = lastMessage.sender();
-             }
-        }
-        if (messageContent != null) {
-            IfoodChatMessageReceivedEvent chatEvent = new IfoodChatMessageReceivedEvent(
-                    credential.getStoreId(),
-                    event.getOrderId(),
-                    event.getId(),
-                    messageContent,
-                    senderId != null ? senderId : "CUSTOMER",
-                    java.time.Instant.now()
-            );
-            eventPublisher.publishChatMessage(chatEvent);
-            LOG.infof("[IFOOD-POLL] Chat recebido orderId=%s storeId=%s", event.getOrderId(), credential.getStoreId());
-        }
-    }
 
     private void handleStatusChange(IfoodCredential credential, IfoodEvent event, IfoodOrderStatus status) {
         Optional<String> biteflowStatus = status.toBiteflowStatus();
