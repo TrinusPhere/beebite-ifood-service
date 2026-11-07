@@ -76,6 +76,49 @@ class IfoodCredentialTest {
     }
 
     @Test
+    void shouldCapTokenValidityAtSixHoursEvenWhenIfoodReportsLongerExpiry() {
+        IfoodCredential cred = new IfoodCredential(STORE_ID, "client-id", "secret", "merchant-id");
+        cred.updateToken("new-token", "refresh", 31_536_000L); // 1 ano
+
+        LocalDateTime now = LocalDateTime.now();
+        assertTrue(cred.getTokenExpiresAt().isBefore(now.plusHours(6).plusMinutes(1)));
+        assertTrue(cred.getTokenExpiresAt().isAfter(now.plusHours(5)));
+        assertTrue(cred.isTokenValid());
+    }
+
+    @Test
+    void shouldTreatNonPositiveExpiresInAsAlreadyExpired() {
+        IfoodCredential cred = new IfoodCredential(STORE_ID, "client-id", "secret", "merchant-id");
+        cred.updateToken("new-token", "refresh", 0L);
+
+        assertFalse(cred.isTokenValid());
+    }
+
+    @Test
+    void shouldRejectPersistedTokenWhoseExpiryExceedsMaxValidity() {
+        // Dado legado: token gravado com validade de 1 ano (iFood só emite tokens de 6h)
+        IfoodCredential legacy = IfoodCredential.reconstitute(
+                UUID.randomUUID(), STORE_ID, "client-id", "secret", "merchant-id",
+                "stale-token", "refresh-token", "auth-code", LocalDateTime.now().plusYears(1), true,
+                LocalDateTime.now().minusDays(30), LocalDateTime.now().minusDays(30)
+        );
+
+        assertFalse(legacy.isTokenValid());
+    }
+
+    @Test
+    void shouldInvalidateTokenKeepingRefreshTokenForRenewal() {
+        IfoodCredential cred = new IfoodCredential(STORE_ID, "client-id", "secret", "merchant-id");
+        cred.updateToken("rejected-token", "refresh", 3600);
+        assertTrue(cred.isTokenValid());
+
+        cred.invalidateToken();
+
+        assertFalse(cred.isTokenValid());
+        assertEquals("refresh", cred.getRefreshToken());
+    }
+
+    @Test
     void shouldReconstituteFromPersistence() {
         UUID id = UUID.randomUUID();
         LocalDateTime now = LocalDateTime.now();

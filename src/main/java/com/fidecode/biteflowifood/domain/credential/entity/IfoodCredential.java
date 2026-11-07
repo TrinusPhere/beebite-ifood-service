@@ -26,6 +26,9 @@ public class IfoodCredential {
     /** Token é considerado inválido se expirar em menos de 5 minutos */
     private static final int TOKEN_VALIDITY_MARGIN_MINUTES = 5;
 
+    /** Validade máxima de um access token do iFood: 6 horas (ver doc de autenticação). */
+    public static final long MAX_TOKEN_VALIDITY_SECONDS = 6L * 60 * 60;
+
     // ── Construtor principal ───────────────────────────────────────────────────
 
     public IfoodCredential(UUID storeId, String clientId, String encryptedClientSecret, String merchantId) {
@@ -75,11 +78,17 @@ public class IfoodCredential {
      */
     public boolean isTokenValid() {
         if (accessToken == null || tokenExpiresAt == null) return false;
-        return tokenExpiresAt.isAfter(LocalDateTime.now().plusMinutes(TOKEN_VALIDITY_MARGIN_MINUTES));
+        LocalDateTime now = LocalDateTime.now();
+        // O iFood só emite tokens de até 6h: uma expiração além disso é dado corrompido/legado
+        // e nunca deve ser confiada (senão o token vencido jamais seria renovado).
+        if (tokenExpiresAt.isAfter(now.plusSeconds(MAX_TOKEN_VALIDITY_SECONDS))) return false;
+        return tokenExpiresAt.isAfter(now.plusMinutes(TOKEN_VALIDITY_MARGIN_MINUTES));
     }
 
     /**
      * Atualiza o access token e calcula a data de expiração.
+     * A validade nunca excede {@link #MAX_TOKEN_VALIDITY_SECONDS} (6h, limite do iFood) e
+     * um valor não positivo é tratado como token já expirado.
      *
      * @param newAccessToken  token obtido do OAuth do iFood
      * @param newRefreshToken refresh token obtido do OAuth do iFood
@@ -90,7 +99,17 @@ public class IfoodCredential {
         if (newRefreshToken != null && !newRefreshToken.isBlank()) {
             this.refreshToken = newRefreshToken;
         }
-        this.tokenExpiresAt = LocalDateTime.now().plusSeconds(expiresInSeconds);
+        long effectiveSeconds = Math.max(0, Math.min(expiresInSeconds, MAX_TOKEN_VALIDITY_SECONDS));
+        this.tokenExpiresAt = LocalDateTime.now().plusSeconds(effectiveSeconds);
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * Marca o access token como inutilizável (ex.: o iFood o rejeitou com 401), forçando a
+     * renovação no próximo uso. O refresh token é preservado para a renovação.
+     */
+    public void invalidateToken() {
+        this.tokenExpiresAt = null;
         this.updatedAt = LocalDateTime.now();
     }
 

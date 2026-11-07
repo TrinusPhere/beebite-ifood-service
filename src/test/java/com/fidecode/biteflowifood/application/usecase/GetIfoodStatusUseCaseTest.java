@@ -2,9 +2,7 @@ package com.fidecode.biteflowifood.application.usecase;
 
 import com.fidecode.biteflowifood.application.dto.GetStatusResponse;
 import com.fidecode.biteflowifood.application.dto.IfoodMerchantStatusResponse;
-import com.fidecode.biteflowifood.application.port.IfoodAuthClient;
 import com.fidecode.biteflowifood.application.port.IfoodMerchantClient;
-import com.fidecode.biteflowifood.application.port.SecretEncryptor;
 import com.fidecode.biteflowifood.domain.credential.entity.IfoodCredential;
 import com.fidecode.biteflowifood.domain.credential.exception.CredentialNotFoundException;
 import com.fidecode.biteflowifood.domain.credential.repository.IfoodCredentialRepository;
@@ -20,7 +18,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,9 +28,7 @@ class GetIfoodStatusUseCaseTest {
     @Mock
     IfoodMerchantClient merchantClient;
     @Mock
-    IfoodAuthClient authClient;
-    @Mock
-    SecretEncryptor secretEncryptor;
+    ProvideValidIfoodTokenUseCase tokenUseCase;
 
     @InjectMocks
     GetIfoodStatusUseCase useCase;
@@ -44,10 +39,11 @@ class GetIfoodStatusUseCaseTest {
         IfoodCredential credential = IfoodCredential.reconstitute(
                 UUID.randomUUID(), storeId, "clientId", "encSecret", "merchantId",
                 "validToken", null, null,
-                java.time.LocalDateTime.now().plusDays(1), true, null, null
+                java.time.LocalDateTime.now().plusHours(1), true, null, null
         );
 
         when(credentialRepository.findByStoreId(storeId)).thenReturn(Optional.of(credential));
+        when(tokenUseCase.ensureValid(credential)).thenReturn(credential);
         when(merchantClient.getMerchantStatus("validToken", "merchantId")).thenReturn(List.of(
                 new IfoodMerchantStatusResponse("DELIVERY", true, "OK"),
                 new IfoodMerchantStatusResponse("TAKEOUT", false, "PAUSED")
@@ -57,6 +53,7 @@ class GetIfoodStatusUseCaseTest {
 
         assertTrue(response.isOpen());
         assertEquals(2, response.operations().size());
+        verify(tokenUseCase).ensureValid(credential);
     }
 
     @Test
@@ -65,10 +62,11 @@ class GetIfoodStatusUseCaseTest {
         IfoodCredential credential = IfoodCredential.reconstitute(
                 UUID.randomUUID(), storeId, "clientId", "encSecret", "merchantId",
                 "validToken", null, null,
-                java.time.LocalDateTime.now().plusDays(1), true, null, null
+                java.time.LocalDateTime.now().plusHours(1), true, null, null
         );
 
         when(credentialRepository.findByStoreId(storeId)).thenReturn(Optional.of(credential));
+        when(tokenUseCase.ensureValid(credential)).thenReturn(credential);
         when(merchantClient.getMerchantStatus("validToken", "merchantId")).thenReturn(List.of(
                 new IfoodMerchantStatusResponse("DELIVERY", false, "PAUSED")
         ));
@@ -77,6 +75,7 @@ class GetIfoodStatusUseCaseTest {
 
         assertFalse(response.isOpen());
         assertEquals(1, response.operations().size());
+        verify(tokenUseCase).ensureValid(credential);
     }
 
     @Test

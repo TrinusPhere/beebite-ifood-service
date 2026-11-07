@@ -43,6 +43,7 @@ public enum IfoodOrderStatus {
     DELIVERY_RETURNING_TO_ORIGIN("DRGO"),
     DELIVERY_RETURNED_TO_ORIGIN("DRDO"),
     DELIVERY_RETURN_CODE_REQUESTED("DRCR"),
+    DELIVERY_DISPUTE_CODE_REQUESTED("DDCR"),
 
     // ── DELIVERY_ADDRESS (pedidos sob demanda) ────────────────────────────────
     DELIVERY_ADDRESS_CHANGE_REQUESTED("DAR"),
@@ -115,6 +116,7 @@ public enum IfoodOrderStatus {
     public Optional<String> toBiteflowStatus() {
         return switch (this) {
             case PLACED -> Optional.of("ANALISE");
+            case CONFIRMED -> Optional.of("PREPARO");
             case DISPATCHED -> Optional.of("EM_ROTA");
             case CONCLUDED -> Optional.of("FINALIZADO");
             case CANCELLED -> Optional.of("CANCELADO");

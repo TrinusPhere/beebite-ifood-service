@@ -66,6 +66,15 @@ class IfoodEventRestClientTest {
     }
 
     @Test
+    void shouldThrowAuthenticationExceptionWhenPollingReturns401() {
+        responseStatus = 401;
+        responseBody = "{\"error\":{\"code\":\"Unauthorized\"}}";
+
+        assertThrows(com.fidecode.biteflowifood.domain.shared.exception.IfoodAuthenticationException.class,
+                () -> client.pollEvents("expired-token", "merchant-abc"));
+    }
+
+    @Test
     void shouldSendPollingMerchantsHeaderWithTheStoreMerchantId() {
         client.pollEvents("token-123", "merchant-abc");
 

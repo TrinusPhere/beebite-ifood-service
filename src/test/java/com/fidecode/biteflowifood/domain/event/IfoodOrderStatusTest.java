@@ -102,6 +102,12 @@ class IfoodOrderStatusTest {
     }
 
     @Test
+    void shouldMapConfirmedToBiteflowPreparo() {
+        assertTrue(IfoodOrderStatus.CONFIRMED.toBiteflowStatus().isPresent());
+        assertEquals("PREPARO", IfoodOrderStatus.CONFIRMED.toBiteflowStatus().get());
+    }
+
+    @Test
     void shouldMapDispatchedToBiteflowEmRota() {
         assertTrue(IfoodOrderStatus.DISPATCHED.toBiteflowStatus().isPresent());
         assertEquals("EM_ROTA", IfoodOrderStatus.DISPATCHED.toBiteflowStatus().get());
@@ -121,7 +127,6 @@ class IfoodOrderStatusTest {
 
     @Test
     void shouldReturnEmptyForIntermediaryStatuses() {
-        assertTrue(IfoodOrderStatus.CONFIRMED.toBiteflowStatus().isEmpty());
         assertTrue(IfoodOrderStatus.READY_TO_PICKUP.toBiteflowStatus().isEmpty());
         assertTrue(IfoodOrderStatus.SEPARATION_STARTED.toBiteflowStatus().isEmpty());
         assertTrue(IfoodOrderStatus.SEPARATION_ENDED.toBiteflowStatus().isEmpty());
@@ -132,8 +137,9 @@ class IfoodOrderStatusTest {
     @Test
     void onlyOrderLifecycleEventsShouldChangeBiteflowStatus() {
         Set<IfoodOrderStatus> mapped = Set.of(
-                IfoodOrderStatus.PLACED, IfoodOrderStatus.DISPATCHED,
-                IfoodOrderStatus.CONCLUDED, IfoodOrderStatus.CANCELLED);
+                IfoodOrderStatus.PLACED, IfoodOrderStatus.CONFIRMED,
+                IfoodOrderStatus.DISPATCHED, IfoodOrderStatus.CONCLUDED,
+                IfoodOrderStatus.CANCELLED);
         for (IfoodOrderStatus status : IfoodOrderStatus.values()) {
             assertEquals(mapped.contains(status), status.toBiteflowStatus().isPresent(),
                     "Mapeamento inesperado para " + status);

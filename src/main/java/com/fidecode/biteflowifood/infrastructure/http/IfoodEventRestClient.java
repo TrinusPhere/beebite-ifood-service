@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fidecode.biteflowifood.application.port.IfoodEventClient;
 import com.fidecode.biteflowifood.domain.event.entity.IfoodEvent;
+import com.fidecode.biteflowifood.domain.shared.exception.IfoodAuthenticationException;
 import com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationException;
 
 import jakarta.enterprise.context.ApplicationScoped;
@@ -66,6 +67,11 @@ public class IfoodEventRestClient implements IfoodEventClient {
             // 204 = sem eventos
             if (response.statusCode() == 204) return Collections.emptyList();
 
+            // 401 = access token rejeitado (expirado/revogado): o caso de uso renova e tenta de novo.
+            if (response.statusCode() == 401) {
+                throw new IfoodAuthenticationException("Polling rejeitado: HTTP 401");
+            }
+
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IfoodIntegrationException("Polling falhou: HTTP " + response.statusCode());
             }
@@ -77,7 +83,7 @@ public class IfoodEventRestClient implements IfoodEventClient {
                     .map(this::toIfoodEvent)
                     .toList();
 
-        } catch (IfoodIntegrationException e) {
+        } catch (IfoodIntegrationException | IfoodAuthenticationException e) {
             throw e;
         } catch (Exception e) {
             throw new IfoodIntegrationException("Erro ao fazer polling de eventos", e);

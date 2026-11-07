@@ -1,16 +1,15 @@
 package com.fidecode.biteflowifood.application.usecase;
 
 import com.fidecode.biteflowifood.application.dto.*;
-import com.fidecode.biteflowifood.application.port.IfoodAuthClient;
 import com.fidecode.biteflowifood.application.port.IfoodEventClient;
 import com.fidecode.biteflowifood.application.port.IfoodOrderClient;
 import com.fidecode.biteflowifood.application.port.OrderEventPublisher;
-import com.fidecode.biteflowifood.application.port.SecretEncryptor;
 import com.fidecode.biteflowifood.domain.credential.entity.IfoodCredential;
 import com.fidecode.biteflowifood.domain.credential.repository.IfoodCredentialRepository;
 import com.fidecode.biteflowifood.domain.event.entity.IfoodEvent;
 import com.fidecode.biteflowifood.domain.event.repository.ProcessedEventRepository;
 import com.fidecode.biteflowifood.domain.event.valueobject.IfoodOrderStatus;
+import com.fidecode.biteflowifood.domain.shared.exception.IfoodAuthenticationException;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -42,27 +41,24 @@ public class PollIfoodEventsUseCase {
 
     private final IfoodCredentialRepository credentialRepository;
     private final ProcessedEventRepository processedEventRepository;
-    private final IfoodAuthClient authClient;
     private final IfoodEventClient eventClient;
     private final IfoodOrderClient orderClient;
     private final OrderEventPublisher eventPublisher;
-    private final SecretEncryptor secretEncryptor;
+    private final ProvideValidIfoodTokenUseCase tokenUseCase;
 
     @Inject
     public PollIfoodEventsUseCase(IfoodCredentialRepository credentialRepository,
                                    ProcessedEventRepository processedEventRepository,
-                                   IfoodAuthClient authClient,
                                    IfoodEventClient eventClient,
                                    IfoodOrderClient orderClient,
                                    OrderEventPublisher eventPublisher,
-                                   SecretEncryptor secretEncryptor) {
+                                   ProvideValidIfoodTokenUseCase tokenUseCase) {
         this.credentialRepository = credentialRepository;
         this.processedEventRepository = processedEventRepository;
-        this.authClient = authClient;
         this.eventClient = eventClient;
         this.orderClient = orderClient;
         this.eventPublisher = eventPublisher;
-        this.secretEncryptor = secretEncryptor;
+        this.tokenUseCase = tokenUseCase;
     }
 
     public void execute() {
@@ -78,10 +74,11 @@ public class PollIfoodEventsUseCase {
         try {
             ensureValidToken(credential);
 
-            String token = credential.getAccessToken();
             String merchantId = credential.getMerchantId();
 
-            List<IfoodEvent> events = eventClient.pollEvents(token, merchantId);
+            List<IfoodEvent> events = pollWithTokenRecovery(credential);
+            // Lido depois do polling: pode ter sido renovado se o iFood rejeitou o token anterior.
+            String token = credential.getAccessToken();
             if (events.isEmpty()) {
                 LOG.debugf("[IFOOD-POLL] store=%s events=0", credential.getStoreId());
                 return;
@@ -147,19 +144,21 @@ public class PollIfoodEventsUseCase {
     }
 
     private void ensureValidToken(IfoodCredential credential) {
-        if (!credential.isTokenValid()) {
-            LOG.infof("[IFOOD-POLL] Token expirado para store=%s, renovando...", credential.getStoreId());
-            String plainSecret = secretEncryptor.decrypt(credential.getEncryptedClientSecret());
-            IfoodTokenResponse newToken;
-            
-            if (credential.getRefreshToken() != null && !credential.getRefreshToken().isBlank()) {
-                newToken = authClient.refreshToken(credential.getClientId(), plainSecret, credential.getRefreshToken());
-            } else {
-                newToken = authClient.authenticate(credential.getClientId(), plainSecret);
-            }
-            
-            credential.updateToken(newToken.accessToken(), newToken.refreshToken(), newToken.expiresIn());
-            credentialRepository.save(credential);
+        tokenUseCase.ensureValid(credential);
+    }
+
+    /**
+     * Faz o polling; se o iFood rejeitar o token (401) — expirado antes da hora ou revogado —,
+     * invalida-o, renova e repete a chamada UMA vez. Uma segunda rejeição propaga a exceção.
+     */
+    private List<IfoodEvent> pollWithTokenRecovery(IfoodCredential credential) {
+        try {
+            return eventClient.pollEvents(credential.getAccessToken(), credential.getMerchantId());
+        } catch (IfoodAuthenticationException e) {
+            LOG.warnf("[IFOOD-POLL] iFood rejeitou o token da store=%s (401), renovando e tentando de novo...",
+                    credential.getStoreId());
+            tokenUseCase.invalidateAndRenew(credential);
+            return eventClient.pollEvents(credential.getAccessToken(), credential.getMerchantId());
         }
     }
 

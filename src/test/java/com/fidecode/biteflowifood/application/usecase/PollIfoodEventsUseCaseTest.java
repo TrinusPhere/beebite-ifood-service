@@ -1,16 +1,15 @@
 package com.fidecode.biteflowifood.application.usecase;
 
 import com.fidecode.biteflowifood.application.dto.*;
-import com.fidecode.biteflowifood.application.port.IfoodAuthClient;
 import com.fidecode.biteflowifood.application.port.IfoodEventClient;
 import com.fidecode.biteflowifood.application.port.IfoodOrderClient;
 import com.fidecode.biteflowifood.application.port.OrderEventPublisher;
-import com.fidecode.biteflowifood.application.port.SecretEncryptor;
 import com.fidecode.biteflowifood.domain.credential.entity.IfoodCredential;
 import com.fidecode.biteflowifood.domain.credential.repository.IfoodCredentialRepository;
 import com.fidecode.biteflowifood.domain.event.entity.IfoodEvent;
 import com.fidecode.biteflowifood.domain.event.repository.ProcessedEventRepository;
 import com.fidecode.biteflowifood.domain.event.valueobject.IfoodOrderStatus;
+import com.fidecode.biteflowifood.domain.shared.exception.IfoodAuthenticationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -31,11 +30,10 @@ class PollIfoodEventsUseCaseTest {
 
     @Mock IfoodCredentialRepository credentialRepository;
     @Mock ProcessedEventRepository processedEventRepository;
-    @Mock IfoodAuthClient authClient;
     @Mock IfoodEventClient eventClient;
     @Mock IfoodOrderClient orderClient;
     @Mock OrderEventPublisher eventPublisher;
-    @Mock SecretEncryptor secretEncryptor;
+    @Mock ProvideValidIfoodTokenUseCase tokenUseCase;
     @InjectMocks PollIfoodEventsUseCase useCase;
 
     private final UUID storeId = UUID.randomUUID();
@@ -119,15 +117,72 @@ class PollIfoodEventsUseCaseTest {
                 true, java.time.LocalDateTime.now(), java.time.LocalDateTime.now()
         );
         when(credentialRepository.findAllEnabled()).thenReturn(List.of(expired));
-        // secretEncryptor descriptografa o enc-secret → plain-secret
-        when(secretEncryptor.decrypt("enc-secret")).thenReturn("plain-secret");
-        when(authClient.refreshToken("cid", "plain-secret", "refresh-token")).thenReturn(
-                new IfoodTokenResponse("new-token", "bearer", 3600L, "new-refresh"));
         when(eventClient.pollEvents(anyString(), eq("mid"))).thenReturn(List.of());
 
         useCase.execute();
 
-        verify(credentialRepository).save(any(IfoodCredential.class));
+        verify(tokenUseCase).ensureValid(expired);
+    }
+
+    @Test
+    void shouldRenewTokenAndRetryPollingOnceWhenIfoodRejectsTokenWith401() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+        when(eventClient.pollEvents("valid-token", "mid"))
+                .thenThrow(new IfoodAuthenticationException("HTTP 401"));
+        doAnswer(inv -> {
+            cred.updateToken("new-token", "new-refresh", 21600L);
+            return cred;
+        }).when(tokenUseCase).invalidateAndRenew(cred);
+        when(eventClient.pollEvents("new-token", "mid")).thenReturn(List.of());
+
+        useCase.execute();
+
+        verify(eventClient).pollEvents("valid-token", "mid");
+        verify(tokenUseCase).invalidateAndRenew(cred);
+        verify(eventClient).pollEvents("new-token", "mid");
+    }
+
+    @Test
+    void shouldUseRenewedTokenToFetchOrderDetailsAndAckAfter401Recovery() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+        when(eventClient.pollEvents("valid-token", "mid"))
+                .thenThrow(new IfoodAuthenticationException("HTTP 401"));
+        doAnswer(inv -> {
+            cred.updateToken("new-token", "new-refresh", 21600L);
+            return cred;
+        }).when(tokenUseCase).invalidateAndRenew(cred);
+        IfoodEvent placedEvent = new IfoodEvent(
+                "evt-renewed", "PLC", "ORDER_STATUS_CHANGED", "ifood-order-id",
+                "mid", Instant.now(), "IFOOD", Map.of()
+        );
+        when(eventClient.pollEvents("new-token", "mid")).thenReturn(List.of(placedEvent));
+        when(processedEventRepository.exists("evt-renewed")).thenReturn(false);
+        when(orderClient.getOrderDetails("new-token", "ifood-order-id"))
+                .thenReturn(buildFakeOrderDetails("ifood-order-id"));
+
+        useCase.execute();
+
+        verify(eventPublisher).publishOrderPlaced(any(IfoodOrderPlacedEvent.class));
+        verify(eventClient).acknowledgeEvents(eq("new-token"), eq(List.of("evt-renewed")));
+    }
+
+    @Test
+    void shouldNotRetryMoreThanOnceWhenIfoodKeepsRejectingTheToken() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+        when(eventClient.pollEvents(anyString(), eq("mid")))
+                .thenThrow(new IfoodAuthenticationException("HTTP 401"));
+        doAnswer(inv -> {
+            cred.updateToken("new-token", "new-refresh", 21600L);
+            return cred;
+        }).when(tokenUseCase).invalidateAndRenew(cred);
+
+        useCase.execute();
+
+        verify(eventClient, times(2)).pollEvents(anyString(), eq("mid"));
+        verify(eventClient, never()).acknowledgeEvents(anyString(), anyList());
     }
 
     @Test
@@ -140,7 +195,7 @@ class PollIfoodEventsUseCaseTest {
     }
 
     @Test
-    void shouldIgnoreIntermediaryStatusEvents() {
+    void shouldPublishStatusChangedForConfirmedOrder() {
         IfoodCredential cred = validCredential();
         when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
 
@@ -153,9 +208,30 @@ class PollIfoodEventsUseCaseTest {
 
         useCase.execute();
 
-        verify(eventPublisher, never()).publishOrderStatusChanged(any());
+        verify(eventPublisher).publishOrderStatusChanged(argThat(e ->
+                "PREPARO".equals(e.newBiteflowStatus()) && "order-id".equals(e.ifoodOrderId())
+        ));
         verify(processedEventRepository).markProcessed("evt-cfm", storeId);
         verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-cfm")));
+    }
+
+    @Test
+    void shouldIgnoreIntermediaryStatusEventsWithoutBiteflowMapping() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findAllEnabled()).thenReturn(List.of(cred));
+
+        IfoodEvent spsEvent = new IfoodEvent(
+                "evt-sps", "SPS", "ORDER_STATUS_CHANGED", "order-id",
+                "mid", Instant.now(), "IFOOD", Map.of()
+        );
+        when(eventClient.pollEvents("valid-token", "mid")).thenReturn(List.of(spsEvent));
+        when(processedEventRepository.exists("evt-sps")).thenReturn(false);
+
+        useCase.execute();
+
+        verify(eventPublisher, never()).publishOrderStatusChanged(any());
+        verify(processedEventRepository).markProcessed("evt-sps", storeId);
+        verify(eventClient).acknowledgeEvents(eq("valid-token"), eq(List.of("evt-sps")));
     }
 
     @Test
