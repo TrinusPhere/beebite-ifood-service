@@ -3,10 +3,10 @@ package com.fidecode.biteflowifood.application.usecase;
 import com.fidecode.biteflowifood.application.dto.BiteflowOrderStatusChangedEvent;
 import com.fidecode.biteflowifood.application.dto.IfoodOrderDetails;
 import com.fidecode.biteflowifood.application.port.IfoodOrderClient;
-import com.fidecode.biteflowifood.application.port.SecretEncryptor;
 import com.fidecode.biteflowifood.domain.credential.entity.IfoodCredential;
 import com.fidecode.biteflowifood.domain.credential.exception.CredentialNotFoundException;
 import com.fidecode.biteflowifood.domain.credential.repository.IfoodCredentialRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -29,10 +29,15 @@ class SyncStatusToIfoodUseCaseTest {
 
     @Mock IfoodCredentialRepository credentialRepository;
     @Mock IfoodOrderClient orderClient;
-    @Mock SecretEncryptor encryptor;
+    @Mock ProvideValidIfoodTokenUseCase tokenUseCase;
     @InjectMocks SyncStatusToIfoodUseCase useCase;
 
     private final UUID storeId = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(tokenUseCase.ensureValid(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
 
     private IfoodCredential validCredential() {
         return IfoodCredential.reconstitute(
@@ -154,13 +159,9 @@ class SyncStatusToIfoodUseCaseTest {
     }
 
     @Test
-    void shouldDoNothingWhenTokenIsExpired() {
-        IfoodCredential expiredCred = IfoodCredential.reconstitute(
-                UUID.randomUUID(), storeId, "cid", "enc-secret", "mid",
-                "expired-token", "refresh-token", "auth-code", LocalDateTime.now().minusMinutes(5),
-                true, LocalDateTime.now(), LocalDateTime.now()
-        );
-        when(credentialRepository.findByStoreId(storeId)).thenReturn(Optional.of(expiredCred));
+    void shouldEnsureValidTokenBeforeExecuting() {
+        IfoodCredential cred = validCredential();
+        when(credentialRepository.findByStoreId(storeId)).thenReturn(Optional.of(cred));
 
         BiteflowOrderStatusChangedEvent event = new BiteflowOrderStatusChangedEvent(
                 storeId, UUID.randomUUID(), "ifood-order-1", "PREPARO", Instant.now()
@@ -168,7 +169,7 @@ class SyncStatusToIfoodUseCaseTest {
 
         useCase.execute(event);
 
-        verifyNoInteractions(orderClient);
+        verify(tokenUseCase).ensureValid(cred);
     }
 
     @Test

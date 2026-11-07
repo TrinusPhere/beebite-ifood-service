@@ -16,6 +16,8 @@ import com.fidecode.biteflowifood.application.usecase.SyncProductToIfoodUseCase;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 
+import io.quarkus.arc.Arc;
+import io.quarkus.arc.ManagedContext;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 
@@ -56,8 +58,10 @@ public class BiteflowCatalogChangedSubscriber {
             ProjectSubscriptionName subscriptionName = ProjectSubscriptionName.of(PROJECT, SUBSCRIPTION_ID);
 
             MessageReceiver receiver = (PubsubMessage message, AckReplyConsumer consumer) -> {
-                String payload = message.getData().toStringUtf8();
+                ManagedContext requestContext = Arc.container().requestContext();
+                requestContext.activate();
                 try {
+                    String payload = message.getData().toStringUtf8();
                     BiteflowCatalogChangedEvent evt = objectMapper.readValue(
                             payload, BiteflowCatalogChangedEvent.class);
                     syncProductUseCase.execute(evt);
@@ -69,6 +73,8 @@ public class BiteflowCatalogChangedSubscriber {
                 } catch (Exception e) {
                     LOG.errorf(e, "[SUB-CATALOG] Erro inesperado — NACK: %s", e.getMessage());
                     consumer.nack();
+                } finally {
+                    requestContext.terminate();
                 }
             };
 

@@ -19,22 +19,27 @@ public class CancelOnIfoodUseCase {
 
     private final IfoodCredentialRepository credentialRepository;
     private final IfoodOrderClient orderClient;
+    private final ProvideValidIfoodTokenUseCase tokenUseCase;
 
     @Inject
     public CancelOnIfoodUseCase(IfoodCredentialRepository credentialRepository,
-                                 IfoodOrderClient orderClient) {
+                                 IfoodOrderClient orderClient,
+                                 ProvideValidIfoodTokenUseCase tokenUseCase) {
         this.credentialRepository = credentialRepository;
         this.orderClient = orderClient;
+        this.tokenUseCase = tokenUseCase;
     }
 
     public void execute(BiteflowOrderCancelledEvent event) {
         IfoodCredential cred = credentialRepository.findByStoreId(event.storeId())
                 .orElseThrow(() -> new CredentialNotFoundException(event.storeId().toString()));
 
-        if (!cred.isEnabled() || !cred.isTokenValid()) {
-            LOG.warnf("[CANCEL-IFOOD] Integração desabilitada ou token inválido para store=%s", event.storeId());
+        if (!cred.isEnabled()) {
+            LOG.warnf("[CANCEL-IFOOD] Integração desabilitada para store=%s", event.storeId());
             return;
         }
+
+        cred = tokenUseCase.ensureValid(cred);
 
         orderClient.requestCancellation(cred.getAccessToken(), event.ifoodOrderId(),
                 event.cancellationCode(), event.reason());

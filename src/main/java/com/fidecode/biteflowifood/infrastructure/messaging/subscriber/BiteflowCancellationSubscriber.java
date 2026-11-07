@@ -16,6 +16,8 @@ import com.fidecode.biteflowifood.application.usecase.CancelOnIfoodUseCase;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 
+import io.quarkus.arc.Arc;
+import io.quarkus.arc.ManagedContext;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 
@@ -61,8 +63,10 @@ public class BiteflowCancellationSubscriber {
             ProjectSubscriptionName subscriptionName = ProjectSubscriptionName.of(PROJECT, SUBSCRIPTION_ID);
 
             MessageReceiver receiver = (PubsubMessage message, AckReplyConsumer consumer) -> {
-                String payload = message.getData().toStringUtf8();
+                ManagedContext requestContext = Arc.container().requestContext();
+                requestContext.activate();
                 try {
+                    String payload = message.getData().toStringUtf8();
                     BiteflowOrderCancelledEvent evt = objectMapper.readValue(
                             payload, BiteflowOrderCancelledEvent.class);
                     cancelUseCase.execute(evt);
@@ -74,6 +78,8 @@ public class BiteflowCancellationSubscriber {
                 } catch (Exception e) {
                     LOG.errorf(e, "[SUB-CANCEL] Erro inesperado — NACK: %s", e.getMessage());
                     consumer.nack();
+                } finally {
+                    requestContext.terminate();
                 }
             };
 

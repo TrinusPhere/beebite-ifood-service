@@ -3,7 +3,6 @@ package com.fidecode.biteflowifood.application.usecase;
 import com.fidecode.biteflowifood.application.dto.BiteflowOrderStatusChangedEvent;
 import com.fidecode.biteflowifood.application.dto.IfoodOrderDetails;
 import com.fidecode.biteflowifood.application.port.IfoodOrderClient;
-import com.fidecode.biteflowifood.application.port.SecretEncryptor;
 import com.fidecode.biteflowifood.domain.credential.entity.IfoodCredential;
 import com.fidecode.biteflowifood.domain.credential.exception.CredentialNotFoundException;
 import com.fidecode.biteflowifood.domain.credential.repository.IfoodCredentialRepository;
@@ -28,15 +27,15 @@ public class SyncStatusToIfoodUseCase {
 
     private final IfoodCredentialRepository credentialRepository;
     private final IfoodOrderClient orderClient;
-    private final SecretEncryptor encryptor;
+    private final ProvideValidIfoodTokenUseCase tokenUseCase;
 
     @Inject
     public SyncStatusToIfoodUseCase(IfoodCredentialRepository credentialRepository,
                                      IfoodOrderClient orderClient,
-                                     SecretEncryptor encryptor) {
+                                     ProvideValidIfoodTokenUseCase tokenUseCase) {
         this.credentialRepository = credentialRepository;
         this.orderClient = orderClient;
-        this.encryptor = encryptor;
+        this.tokenUseCase = tokenUseCase;
     }
 
     public void execute(BiteflowOrderStatusChangedEvent event) {
@@ -48,11 +47,8 @@ public class SyncStatusToIfoodUseCase {
             return;
         }
 
+        cred = tokenUseCase.ensureValid(cred);
         String token = cred.getAccessToken();
-        if (!cred.isTokenValid()) {
-            LOG.warnf("[SYNC-STATUS] Token inválido para store=%s. Será renovado no próximo ciclo.", event.storeId());
-            return;
-        }
 
         String ifoodOrderId = event.ifoodOrderId();
 

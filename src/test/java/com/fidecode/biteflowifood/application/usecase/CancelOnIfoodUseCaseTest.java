@@ -23,9 +23,15 @@ class CancelOnIfoodUseCaseTest {
 
     @Mock IfoodCredentialRepository credentialRepository;
     @Mock IfoodOrderClient orderClient;
+    @Mock ProvideValidIfoodTokenUseCase tokenUseCase;
     @InjectMocks CancelOnIfoodUseCase useCase;
 
     private final UUID storeId = UUID.randomUUID();
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        lenient().when(tokenUseCase.ensureValid(any())).thenAnswer(inv -> inv.getArgument(0));
+    }
 
     private IfoodCredential credential(boolean enabled, LocalDateTime tokenExpiresAt) {
         return IfoodCredential.reconstitute(

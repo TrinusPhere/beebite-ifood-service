@@ -16,6 +16,8 @@ import com.fidecode.biteflowifood.application.usecase.SyncStatusToIfoodUseCase;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 
+import io.quarkus.arc.Arc;
+import io.quarkus.arc.ManagedContext;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
 
@@ -66,8 +68,10 @@ public class BiteflowStatusChangeSubscriber {
             ProjectSubscriptionName subscriptionName = ProjectSubscriptionName.of(PROJECT, SUBSCRIPTION_ID);
 
             MessageReceiver receiver = (PubsubMessage message, AckReplyConsumer consumer) -> {
-                String payload = message.getData().toStringUtf8();
+                ManagedContext requestContext = Arc.container().requestContext();
+                requestContext.activate();
                 try {
+                    String payload = message.getData().toStringUtf8();
                     BiteflowOrderStatusChangedEvent evt = objectMapper.readValue(
                             payload, BiteflowOrderStatusChangedEvent.class);
                     syncStatusUseCase.execute(evt);
@@ -82,6 +86,8 @@ public class BiteflowStatusChangeSubscriber {
                 } catch (Exception e) {
                     LOG.errorf(e, "[SUB-STATUS] Erro inesperado — NACK: %s", e.getMessage());
                     consumer.nack(); // Reprocessar: pode ser erro transitório
+                } finally {
+                    requestContext.terminate();
                 }
             };
 
