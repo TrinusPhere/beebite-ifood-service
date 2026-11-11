@@ -37,12 +37,14 @@ import java.util.concurrent.TimeUnit;
 public class PubSubOrderEventPublisher implements OrderEventPublisher {
 
     private static final Logger LOG = Logger.getLogger(PubSubOrderEventPublisher.class);
-    private static final String PROJECT = "biteflow-dev";
     private static final String TOPIC_PLACED = "ifood-order-placed";
     private static final String TOPIC_STATUS_CHANGED = "ifood-order-status-changed";
     private static final String TOPIC_CHAT_MESSAGE = "ifood-chat-message";
     private static final String TOPIC_DISPUTE = "ifood-order-dispute";
     private static final String TOPIC_CANCELLATION_REQUESTED = "ifood-order-cancellation-requested";
+
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")
     Optional<String> emulatorEndpoint;
@@ -129,7 +131,7 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
     }
 
     private Publisher buildPublisher(String topicId) throws Exception {
-        ProjectTopicName topicName = ProjectTopicName.of(PROJECT, topicId);
+        ProjectTopicName topicName = ProjectTopicName.of(projectId, topicId);
 
         if (Boolean.TRUE.equals(usePlaintext.orElse(false)) && emulatorEndpoint.isPresent()) {
             if (channel == null) {

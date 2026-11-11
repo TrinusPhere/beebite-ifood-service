@@ -45,8 +45,10 @@ import java.util.concurrent.TimeUnit;
 public class BiteflowStatusChangeSubscriber {
 
     private static final Logger LOG = Logger.getLogger(BiteflowStatusChangeSubscriber.class);
-    private static final String PROJECT = "biteflow-dev";
     private static final String SUBSCRIPTION_ID = "biteflow-order-status-changed-sub";
+
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")
     Optional<String> emulatorEndpoint;
@@ -65,7 +67,7 @@ public class BiteflowStatusChangeSubscriber {
 
     void onStart(@Observes StartupEvent event) {
         try {
-            ProjectSubscriptionName subscriptionName = ProjectSubscriptionName.of(PROJECT, SUBSCRIPTION_ID);
+            ProjectSubscriptionName subscriptionName = ProjectSubscriptionName.of(projectId, SUBSCRIPTION_ID);
 
             MessageReceiver receiver = (PubsubMessage message, AckReplyConsumer consumer) -> {
                 ManagedContext requestContext = Arc.container().requestContext();

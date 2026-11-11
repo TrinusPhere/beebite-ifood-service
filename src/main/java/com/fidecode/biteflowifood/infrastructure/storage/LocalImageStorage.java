@@ -1,23 +1,30 @@
 package com.fidecode.biteflowifood.infrastructure.storage;
 
 import com.fidecode.biteflowifood.application.port.ImageStoragePort;
-import com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationException;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
 import java.io.InputStream;
 import java.net.URI;
-import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Locale;
 import java.util.UUID;
 
 @ApplicationScoped
 public class LocalImageStorage implements ImageStoragePort {
 
-    // Em produção, isso seria configurado em S3 ou diretório específico.
-    // Para MVP, salvamos num diretório local do sistema.
-    private static final String UPLOAD_DIR = "uploads/images";
+    private static final int CONNECT_TIMEOUT_MS = 5000;
+    private static final int READ_TIMEOUT_MS = 10000;
+
+    @ConfigProperty(name = "biteflow.storage.images.dir", defaultValue = "uploads/images")
+    String uploadDir = "uploads/images";
+
+    @ConfigProperty(name = "biteflow.storage.images.public-url", defaultValue = "/api/images")
+    String publicBaseUrl = "/api/images";
 
     @Override
     public String storeImageFromUrl(String imageUrl) {
@@ -25,31 +32,53 @@ public class LocalImageStorage implements ImageStoragePort {
             return null;
         }
 
+        URI uri;
         try {
-            Path uploadPath = Paths.get(UPLOAD_DIR);
+            uri = URI.create(imageUrl.trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+
+        String scheme = uri.getScheme();
+        if (scheme == null || (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
+            return null;
+        }
+
+        try {
+            Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             if (!Files.exists(uploadPath)) {
                 Files.createDirectories(uploadPath);
             }
 
-            String extension = ".png"; // Default
-            if (imageUrl.contains(".jpg")) extension = ".jpg";
-            if (imageUrl.contains(".jpeg")) extension = ".jpeg";
+            String lowerPath = uri.getPath() != null ? uri.getPath().toLowerCase(Locale.ROOT) : "";
+            String extension = ".png";
+            if (lowerPath.endsWith(".jpg") || imageUrl.contains(".jpg")) {
+                extension = ".jpg";
+            } else if (lowerPath.endsWith(".jpeg") || imageUrl.contains(".jpeg")) {
+                extension = ".jpeg";
+            } else if (lowerPath.endsWith(".webp") || imageUrl.contains(".webp")) {
+                extension = ".webp";
+            }
 
-            String fileName = UUID.randomUUID().toString() + extension;
-            Path filePath = uploadPath.resolve(fileName);
+            String fileName = UUID.randomUUID() + extension;
+            Path filePath = uploadPath.resolve(fileName).normalize();
+            if (!filePath.startsWith(uploadPath)) {
+                return null;
+            }
 
-            try (InputStream in = URI.create(imageUrl).toURL().openStream()) {
+            URLConnection connection = uri.toURL().openConnection();
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+
+            try (InputStream in = connection.getInputStream()) {
                 Files.copy(in, filePath, StandardCopyOption.REPLACE_EXISTING);
             }
 
-            // Retorna o path relativo ou uma URL estática
-            // Como é um MVP, apenas retornamos a URL do arquivo ou o nome do arquivo,
-            // que seria servido pelo backend em um endpoint estático.
-            return "/api/images/" + fileName; 
+            String baseUrl = (publicBaseUrl != null && !publicBaseUrl.isBlank())
+                    ? publicBaseUrl.replaceAll("/+$", "")
+                    : "/api/images";
+            return baseUrl + "/" + fileName;
         } catch (Exception e) {
-            // Em caso de erro ao baixar a imagem, podemos apenas logar e retornar null ou a original.
-            // Aqui decidimos lançar exception para evitar produtos sem imagem se for requerido,
-            // mas o iFood às vezes tem URLs de imagens que falham. Vamos retornar a original como fallback.
             return imageUrl;
         }
     }

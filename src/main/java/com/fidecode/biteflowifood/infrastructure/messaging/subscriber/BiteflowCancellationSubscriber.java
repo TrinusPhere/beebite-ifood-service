@@ -40,8 +40,10 @@ import java.util.concurrent.TimeUnit;
 public class BiteflowCancellationSubscriber {
 
     private static final Logger LOG = Logger.getLogger(BiteflowCancellationSubscriber.class);
-    private static final String PROJECT = "biteflow-dev";
     private static final String SUBSCRIPTION_ID = "biteflow-order-cancelled-sub";
+
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")
     Optional<String> emulatorEndpoint;
@@ -60,7 +62,7 @@ public class BiteflowCancellationSubscriber {
 
     void onStart(@Observes StartupEvent event) {
         try {
-            ProjectSubscriptionName subscriptionName = ProjectSubscriptionName.of(PROJECT, SUBSCRIPTION_ID);
+            ProjectSubscriptionName subscriptionName = ProjectSubscriptionName.of(projectId, SUBSCRIPTION_ID);
 
             MessageReceiver receiver = (PubsubMessage message, AckReplyConsumer consumer) -> {
                 ManagedContext requestContext = Arc.container().requestContext();

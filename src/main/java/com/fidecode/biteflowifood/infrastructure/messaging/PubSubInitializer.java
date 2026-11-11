@@ -36,7 +36,8 @@ public class PubSubInitializer {
 
     private static final Logger LOG = Logger.getLogger(PubSubInitializer.class);
 
-    private static final String PROJECT = "biteflow-dev";
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    String projectId;
 
     // Tópicos publicados pelo serviço de integração (para o BiteFlow consumir)
     private static final String TOPIC_IFOOD_ORDER_PLACED          = "ifood-order-placed";
@@ -139,7 +140,7 @@ public class PubSubInitializer {
     }
 
     private void createTopicIfNotExists(TopicAdminClient client, String topicId) {
-        ProjectTopicName topicName = ProjectTopicName.of(PROJECT, topicId);
+        ProjectTopicName topicName = ProjectTopicName.of(projectId, topicId);
         try {
             client.getTopic(topicName);
             LOG.debugf("[PUBSUB-INIT] Tópico já existe: %s", topicId);
@@ -150,8 +151,8 @@ public class PubSubInitializer {
     }
 
     private void createSubscriptionIfNotExists(SubscriptionAdminClient client, String subId, String topicId) {
-        ProjectSubscriptionName subName = ProjectSubscriptionName.of(PROJECT, subId);
-        ProjectTopicName topicName = ProjectTopicName.of(PROJECT, topicId);
+        ProjectSubscriptionName subName = ProjectSubscriptionName.of(projectId, subId);
+        ProjectTopicName topicName = ProjectTopicName.of(projectId, topicId);
         try {
             client.getSubscription(subName);
             LOG.debugf("[PUBSUB-INIT] Subscription já existe: %s", subId);

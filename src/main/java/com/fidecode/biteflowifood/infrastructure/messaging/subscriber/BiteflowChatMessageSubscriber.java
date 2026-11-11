@@ -35,8 +35,10 @@ import java.util.concurrent.TimeUnit;
 public class BiteflowChatMessageSubscriber {
 
     private static final Logger LOG = Logger.getLogger(BiteflowChatMessageSubscriber.class);
-    private static final String PROJECT = "biteflow-dev";
     private static final String SUBSCRIPTION = "biteflow-chat-message-outbound-sub";
+
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")
     Optional<String> emulatorEndpoint;
@@ -57,7 +59,7 @@ public class BiteflowChatMessageSubscriber {
         }
 
         try {
-            ProjectSubscriptionName subName = ProjectSubscriptionName.of(PROJECT, SUBSCRIPTION);
+            ProjectSubscriptionName subName = ProjectSubscriptionName.of(projectId, SUBSCRIPTION);
 
             if (Boolean.TRUE.equals(usePlaintext.orElse(false)) && emulatorEndpoint.isPresent()) {
                 channel = ManagedChannelBuilder.forTarget(emulatorEndpoint.get()).usePlaintext().build();

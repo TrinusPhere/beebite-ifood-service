@@ -3,6 +3,7 @@ package com.fidecode.biteflowifood.infrastructure.crypto;
 import com.fidecode.biteflowifood.application.port.SecretEncryptor;
 import com.fidecode.biteflowifood.domain.shared.exception.IfoodIntegrationException;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -27,9 +28,27 @@ public class AesSecretEncryptor implements SecretEncryptor {
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
     private static final String ALGORITHM = "AES/GCM/NoPadding";
+    private static final String DEFAULT_DEV_KEY = "BtFl0w-Enc-K3y-32-chars-secret!";
 
     @ConfigProperty(name = "biteflow.ifood.encryption-key")
     String encryptionKey;
+
+    @ConfigProperty(name = "biteflow.ifood.enforce-prod-key", defaultValue = "true")
+    boolean enforceProdKey;
+
+    @PostConstruct
+    public void validateKeyConfiguration() {
+        if (!enforceProdKey) {
+            return;
+        }
+        if (encryptionKey == null
+                || encryptionKey.isBlank()
+                || DEFAULT_DEV_KEY.equals(encryptionKey)
+                || encryptionKey.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IfoodIntegrationException(
+                    "Configuração insegura em produção: defina IFOOD_ENCRYPTION_KEY exclusiva com pelo menos 32 bytes.");
+        }
+    }
 
     @Override
     public String encrypt(String plainText) {
