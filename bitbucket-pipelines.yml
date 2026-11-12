@@ -23,16 +23,10 @@ pipelines:
           caches:
             - maven
           script:
-            - chmod +x mvnw
-            - ./mvnw package -Dnative -DskipTests -Dquarkus.native.native-image-xmx=5g
-            - curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=/tmp
-            - export PATH="/tmp/google-cloud-sdk/bin:$PATH"
-            - echo "$GCP_SA_KEY_BASE64" | base64 -d > /tmp/gcp-key.json
-            - gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
-            - gcloud auth configure-docker ${GCP_REGION:-us-east1}-docker.pkg.dev --quiet
+            - bash mvnw package -Dnative -DskipTests -Dquarkus.native.native-image-xmx=5g
+            - echo "$GCP_SA_KEY_BASE64" | base64 -d | docker login -u _json_key --password-stdin https://${GCP_REGION:-us-east1}-docker.pkg.dev
             - IMAGE_URI="${GCP_REGION:-us-east1}-docker.pkg.dev/${GCP_PROJECT_ID:-beebite-prd}/beebite-repo/beebite-ifood-service"
             - docker build -f src/main/docker/Dockerfile.native -t "${IMAGE_URI}:${BITBUCKET_COMMIT::7}" -t "${IMAGE_URI}:latest" .
             - docker push "${IMAGE_URI}:${BITBUCKET_COMMIT::7}"
             - docker push "${IMAGE_URI}:latest"
-            - rm -f /tmp/gcp-key.json
 
