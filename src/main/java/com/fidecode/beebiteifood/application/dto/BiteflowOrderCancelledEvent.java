@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Contrato do evento consumido do tópico Pub/Sub: biteflow-order-cancelled.
+ * Contrato do evento consumido do tópico Pub/Sub: beebite-order-cancelled.
  * Publicado pelo BiteFlow quando o operador cancela um pedido iFood.
  */
 public record BiteflowOrderCancelledEvent(

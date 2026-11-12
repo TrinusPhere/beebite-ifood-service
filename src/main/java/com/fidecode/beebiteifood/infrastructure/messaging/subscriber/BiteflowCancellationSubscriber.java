@@ -32,7 +32,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Subscriber do tópico: biteflow-order-cancelled.
+ * Subscriber do tópico: beebite-order-cancelled.
  * Consome eventos publicados pelo BiteFlow quando o operador cancela um pedido iFood.
  * Delega para CancelOnIfoodUseCase.
  */
@@ -40,9 +40,9 @@ import java.util.concurrent.TimeUnit;
 public class BiteflowCancellationSubscriber {
 
     private static final Logger LOG = Logger.getLogger(BiteflowCancellationSubscriber.class);
-    private static final String SUBSCRIPTION_ID = "biteflow-order-cancelled-sub";
+    private static final String SUBSCRIPTION_ID = "beebite-order-cancelled-sub";
 
-    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "beebite-dev")
     String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")

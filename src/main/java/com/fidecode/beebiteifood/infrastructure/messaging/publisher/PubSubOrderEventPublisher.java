@@ -43,7 +43,7 @@ public class PubSubOrderEventPublisher implements OrderEventPublisher {
     private static final String TOPIC_DISPUTE = "ifood-order-dispute";
     private static final String TOPIC_CANCELLATION_REQUESTED = "ifood-order-cancellation-requested";
 
-    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "beebite-dev")
     String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")

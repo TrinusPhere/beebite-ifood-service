@@ -36,7 +36,7 @@ public class PubSubInitializer {
 
     private static final Logger LOG = Logger.getLogger(PubSubInitializer.class);
 
-    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "beebite-dev")
     String projectId;
 
     // Tópicos publicados pelo serviço de integração (para o BiteFlow consumir)
@@ -47,16 +47,16 @@ public class PubSubInitializer {
     private static final String TOPIC_IFOOD_CANCELLATION_REQUESTED = "ifood-order-cancellation-requested";
 
     // Tópicos publicados pelo BiteFlow (para o serviço de integração consumir)
-    private static final String TOPIC_BITEFLOW_STATUS_CHANGED      = "biteflow-order-status-changed";
-    private static final String TOPIC_BITEFLOW_ORDER_CANCELLED      = "biteflow-order-cancelled";
-    private static final String TOPIC_BITEFLOW_CATALOG_CHANGED     = "biteflow-catalog-changed";
-    private static final String TOPIC_BITEFLOW_CHAT_MESSAGE        = "biteflow-chat-message-outbound";
+    private static final String TOPIC_BITEFLOW_STATUS_CHANGED      = "beebite-order-status-changed";
+    private static final String TOPIC_BITEFLOW_ORDER_CANCELLED      = "beebite-order-cancelled";
+    private static final String TOPIC_BITEFLOW_CATALOG_CHANGED     = "beebite-catalog-changed";
+    private static final String TOPIC_BITEFLOW_CHAT_MESSAGE        = "beebite-chat-message-outbound";
 
     // Subscriptions que este serviço consome
-    private static final String SUB_BITEFLOW_STATUS_CHANGED = "biteflow-order-status-changed-sub";
-    private static final String SUB_BITEFLOW_ORDER_CANCELLED = "biteflow-order-cancelled-sub";
-    private static final String SUB_BITEFLOW_CATALOG_CHANGED = "biteflow-catalog-changed-sub";
-    private static final String SUB_BITEFLOW_CHAT_MESSAGE = "biteflow-chat-message-outbound-sub";
+    private static final String SUB_BITEFLOW_STATUS_CHANGED = "beebite-order-status-changed-sub";
+    private static final String SUB_BITEFLOW_ORDER_CANCELLED = "beebite-order-cancelled-sub";
+    private static final String SUB_BITEFLOW_CATALOG_CHANGED = "beebite-catalog-changed-sub";
+    private static final String SUB_BITEFLOW_CHAT_MESSAGE = "beebite-chat-message-outbound-sub";
 
     // Subscriptions que o BiteFlow consome (criamos aqui para facilitar ambiente local)
     private static final String SUB_IFOOD_ORDER_PLACED = "ifood-order-placed-sub";

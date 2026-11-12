@@ -32,7 +32,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Subscriber do tópico: biteflow-order-status-changed.
+ * Subscriber do tópico: beebite-order-status-changed.
  * Consome eventos publicados pelo BiteFlow quando o operador muda o status de um pedido iFood.
  * Delega para SyncStatusToIfoodUseCase.
  *
@@ -45,9 +45,9 @@ import java.util.concurrent.TimeUnit;
 public class BiteflowStatusChangeSubscriber {
 
     private static final Logger LOG = Logger.getLogger(BiteflowStatusChangeSubscriber.class);
-    private static final String SUBSCRIPTION_ID = "biteflow-order-status-changed-sub";
+    private static final String SUBSCRIPTION_ID = "beebite-order-status-changed-sub";
 
-    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "beebite-dev")
     String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")

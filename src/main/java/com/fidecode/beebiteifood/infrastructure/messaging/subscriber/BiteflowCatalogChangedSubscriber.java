@@ -35,9 +35,9 @@ import java.util.concurrent.TimeUnit;
 public class BiteflowCatalogChangedSubscriber {
 
     private static final Logger LOG = Logger.getLogger(BiteflowCatalogChangedSubscriber.class);
-    private static final String SUBSCRIPTION_ID = "biteflow-catalog-changed-sub";
+    private static final String SUBSCRIPTION_ID = "beebite-catalog-changed-sub";
 
-    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "beebite-dev")
     String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")

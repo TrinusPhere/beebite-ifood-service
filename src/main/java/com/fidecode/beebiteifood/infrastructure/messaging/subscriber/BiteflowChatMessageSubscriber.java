@@ -35,9 +35,9 @@ import java.util.concurrent.TimeUnit;
 public class BiteflowChatMessageSubscriber {
 
     private static final Logger LOG = Logger.getLogger(BiteflowChatMessageSubscriber.class);
-    private static final String SUBSCRIPTION = "biteflow-chat-message-outbound-sub";
+    private static final String SUBSCRIPTION = "beebite-chat-message-outbound-sub";
 
-    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "biteflow-dev")
+    @ConfigProperty(name = "quarkus.google.cloud.project-id", defaultValue = "beebite-dev")
     String projectId;
 
     @ConfigProperty(name = "quarkus.google.cloud.pubsub.endpoint")

@@ -1,11 +1,11 @@
 ####
-# Dockerfile para executar o biteflow-ifood-service em modo Nativo (GraalVM / Mandrel - sem JVM)
+# Dockerfile para executar o beebite-ifood-service em modo Nativo (GraalVM / Mandrel - sem JVM)
 #
 # 1. Compilar o binário nativo Linux:
 #    ./mvnw package -Dnative -DskipTests -Dquarkus.native.container-build=true
 #
 # 2. Construir a imagem Docker:
-#    docker build -f src/main/docker/Dockerfile.native -t us-east1-docker.pkg.dev/biteflow-prd/biteflow-repo/biteflow-ifood-service:latest .
+#    docker build -f src/main/docker/Dockerfile.native -t us-east1-docker.pkg.dev/beebite-prd/beebite-repo/beebite-ifood-service:latest .
 ####
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7
 WORKDIR /work/
