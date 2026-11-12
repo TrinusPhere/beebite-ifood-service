@@ -1,8 +1,8 @@
 # =============================================================================
-# Bitbucket Pipelines — biteflow-ifood-service (Quarkus Native + GCP Registry)
+# Bitbucket Pipelines — beebite-ifood-service (Quarkus Native + GCP Registry)
 # =============================================================================
 # Variáveis necessárias em Repository Settings -> Repository variables:
-#   GCP_PROJECT_ID      : biteflow-prd
+#   GCP_PROJECT_ID      : beebite-prd
 #   GCP_REGION          : us-east1
 #   GCP_SA_KEY_BASE64   : (chave JSON da Service Account de CI em base64)
 # =============================================================================
@@ -17,7 +17,7 @@ pipelines:
     deploy-native-prd:
       - step:
           name: Build Quarkus Native & Push to GCP Artifact Registry
-          size: 2x # 8GB RAM necessários para compilação GraalVM Native
+          size: 2x
           services:
             - docker
           caches:
@@ -30,7 +30,7 @@ pipelines:
             - echo "$GCP_SA_KEY_BASE64" | base64 -d > /tmp/gcp-key.json
             - gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
             - gcloud auth configure-docker ${GCP_REGION:-us-east1}-docker.pkg.dev --quiet
-            - IMAGE_URI="${GCP_REGION:-us-east1}-docker.pkg.dev/${GCP_PROJECT_ID:-biteflow-prd}/biteflow-repo/biteflow-ifood-service"
+            - IMAGE_URI="${GCP_REGION:-us-east1}-docker.pkg.dev/${GCP_PROJECT_ID:-beebite-prd}/beebite-repo/beebite-ifood-service"
             - docker build -f src/main/docker/Dockerfile.native -t "${IMAGE_URI}:${BITBUCKET_COMMIT::7}" -t "${IMAGE_URI}:latest" .
             - docker push "${IMAGE_URI}:${BITBUCKET_COMMIT::7}"
             - docker push "${IMAGE_URI}:latest"
