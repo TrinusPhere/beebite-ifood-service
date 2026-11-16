@@ -1,0 +1,51 @@
+# =============================================================================
+# GitHub Actions — beebite-ifood-service (Quarkus Native + Google Artifact Registry)
+# =============================================================================
+# Secrets necessários em Settings -> Secrets and variables -> Actions:
+#   Secret:
+#     GCP_SA_KEY_BASE64 : (chave JSON da Service Account em base64 — ver config.txt)
+#   Variables (opcionais, já possuem default):
+#     GCP_PROJECT_ID    : beebite-prd
+#     GCP_REGION        : us-east1
+# =============================================================================
+name: Build Quarkus Native & Push to GCP
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    name: Build Native & Push to Artifact Registry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Maven Cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build Quarkus Native Executable (Mandrel JDK 25)
+        run: |
+          chmod +x mvnw
+          ./mvnw package -Dnative -Dquarkus.native.container-build=true -Dquarkus.native.builder-image=quay.io/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-25 -Dquarkus.native.native-image-xmx=5g -DskipTests
+
+      - name: Login to Google Artifact Registry
+        run: |
+          echo "${{ secrets.GCP_SA_KEY_BASE64 }}" | base64 -d | docker login -u _json_key --password-stdin https://${{ vars.GCP_REGION || 'us-east1' }}-docker.pkg.dev
+
+      - name: Build & Push Docker Image
+        run: |
+          IMAGE_URI="${{ vars.GCP_REGION || 'us-east1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID || 'beebite-prd' }}/beebite-repo/beebite-ifood-service"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker build -f src/main/docker/Dockerfile.native -t "${IMAGE_URI}:${SHORT_SHA}" -t "${IMAGE_URI}:latest" .
+          docker push "${IMAGE_URI}:${SHORT_SHA}"
+          docker push "${IMAGE_URI}:latest"
