@@ -5,7 +5,7 @@
 #   Secret:
 #     GCP_SA_KEY_BASE64 : (chave JSON da Service Account em base64 — ver config.txt)
 #   Variables (opcionais, já possuem default):
-#     GCP_PROJECT_ID    : beebite-prd
+#     GCP_PROJECT_ID    : trinusphere-beebite-prd
 #     GCP_REGION        : us-east1
 # =============================================================================
 name: Build Quarkus Native & Push to GCP
@@ -44,8 +44,9 @@ jobs:
 
       - name: Build & Push Docker Image
         run: |
-          IMAGE_URI="${{ vars.GCP_REGION || 'us-east1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID || 'beebite-prd' }}/beebite-repo/beebite-ifood-service"
+          IMAGE_URI="${{ vars.GCP_REGION || 'us-east1' }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID || 'trinusphere-beebite-prd' }}/beebite-repo/beebite-ifood-service"
           SHORT_SHA="${GITHUB_SHA::7}"
           docker build -f src/main/docker/Dockerfile.native -t "${IMAGE_URI}:${SHORT_SHA}" -t "${IMAGE_URI}:latest" .
           docker push "${IMAGE_URI}:${SHORT_SHA}"
           docker push "${IMAGE_URI}:latest"
+
