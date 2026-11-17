@@ -1,5 +1,5 @@
 # =============================================================================
-# GitHub Actions — beebite-ifood-service (Quarkus Native + Google Artifact Registry)
+# GitHub Actions — beebite-ifood-service (Quarkus Native + Artifact Registry + Auto Deploy VM)
 # =============================================================================
 # Secrets necessários em Settings -> Secrets and variables -> Actions:
 #   Secret:
@@ -7,8 +7,9 @@
 #   Variables (opcionais, já possuem default):
 #     GCP_PROJECT_ID    : trinusphere-beebite-prd
 #     GCP_REGION        : us-east1
+#     GCP_ZONE          : us-east1-b
 # =============================================================================
-name: Build Quarkus Native & Push to GCP
+name: Build Quarkus Native & Deploy to GCP
 
 on:
   push:
@@ -19,7 +20,7 @@ on:
 
 jobs:
   build-and-push:
-    name: Build Native & Push to Artifact Registry
+    name: Build Native, Push & Deploy to VM
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -50,3 +51,13 @@ jobs:
           docker push "${IMAGE_URI}:${SHORT_SHA}"
           docker push "${IMAGE_URI}:latest"
 
+      - name: Deploy Automatically on GCP VM (beebite-cloud-vm)
+        run: |
+          echo "${{ secrets.GCP_SA_KEY_BASE64 }}" | base64 -d > /tmp/gcp-sa.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-sa.json --project="${{ vars.GCP_PROJECT_ID || 'trinusphere-beebite-prd' }}"
+          gcloud compute ssh beebite-cloud-vm \
+            --zone="${{ vars.GCP_ZONE || 'us-east1-b' }}" \
+            --project="${{ vars.GCP_PROJECT_ID || 'trinusphere-beebite-prd' }}" \
+            --quiet \
+            --command="cd /opt/beebite && sudo docker compose pull beebite-ifood && sudo docker compose up -d --no-deps beebite-ifood && sudo docker image prune -f"
+          rm -f /tmp/gcp-sa.json
