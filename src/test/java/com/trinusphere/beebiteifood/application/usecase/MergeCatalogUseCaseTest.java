@@ -212,6 +212,45 @@ class MergeCatalogUseCaseTest {
                 "ifood-1".equals(m.getIfoodId()) && UUID.fromString(bfProductId).equals(m.getBiteflowId())));
     }
 
+    @Test
+    void testUseIfoodPreservesBaseBalcaoPriceAndUpdatesIfoodChannelPrice() {
+        String ifoodItemId = "ifood-price-diff";
+        String bfProductId = UUID.randomUUID().toString();
+
+        MergeCatalogUseCase.MergeRequest request = new MergeCatalogUseCase.MergeRequest(List.of(
+                new MergeCatalogUseCase.MergeDecision(ifoodItemId, bfProductId, "USE_IFOOD")
+        ));
+
+        ProductResponse bfProduct = new ProductResponse(
+                bfProductId, "X-Bacon", "cat-1", "Pão e bacon",
+                new BigDecimal("28.00"), // Preço base Balcão/PDV que NÃO deve ser sobrescrito!
+                null, null, 15, "AVAILABLE", "EXT-XB", "DEFAULT",
+                List.of(new com.trinusphere.beebiteifood.application.dto.biteflow.BiteflowCatalogResponse.ChannelPriceDto("IFOOD", new BigDecimal("32.00"))),
+                "PRODUCED", false, null, "UN", true, true, List.of(), List.of(), List.of()
+        );
+        when(biteflowCatalogClient.getProduct(storeId, UUID.fromString(bfProductId))).thenReturn(bfProduct);
+
+        IfoodCategory category = new IfoodCategory("cat-1", "Lanches", "AVAILABLE", "DEFAULT");
+        when(ifoodCatalogClient.listCategories(token, merchantId)).thenReturn(List.of(category));
+
+        var ifoodPrice = new com.trinusphere.beebiteifood.application.dto.catalog.IfoodCatalogResponse.IfoodPrice(
+                new BigDecimal("36.90"), null);
+        var ifoodProd = new com.trinusphere.beebiteifood.application.dto.catalog.IfoodCatalogResponse.IfoodProduct(
+                "prod-1", "X-Bacon Artesanal", "Pão brioche e bacon", null, null);
+        IfoodItemData itemData = new IfoodItemData(
+                ifoodItemId, ifoodItemId, "DEFAULT", "cat-1", "AVAILABLE", ifoodPrice, "EXT-XB", "prod-1", null);
+        when(ifoodCatalogClient.listCategoryItems(token, merchantId, "cat-1"))
+                .thenReturn(new IfoodCategoryItemsResponse("cat-1", List.of(itemData), List.of(ifoodProd), null, null));
+
+        useCase.execute(storeId, merchantId, token, request);
+
+        verify(biteflowCatalogClient).updateProduct(eq(storeId), eq(UUID.fromString(bfProductId)), argThat(req ->
+                new BigDecimal("28.00").compareTo(req.price()) == 0
+                        && req.channelPrices().stream().anyMatch(cp ->
+                        "IFOOD".equals(cp.channel()) && new BigDecimal("36.90").compareTo(cp.price()) == 0)
+        ));
+    }
+
     private ProductResponse product(String id) {
         return new ProductResponse(id, "Produto", "cat-1", null, BigDecimal.TEN, null,
                 null, 0, "AVAILABLE", null, "DEFAULT", null, "RESALE", false, null, "UN", true, true, null, null, null);

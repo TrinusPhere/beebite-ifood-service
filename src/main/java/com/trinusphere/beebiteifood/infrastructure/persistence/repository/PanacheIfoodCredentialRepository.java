@@ -13,11 +13,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Implementa o port de domínio IfoodCredentialRepository.
- * Injeta o helper Panache e converte entre domain e entity.
- * @Transactional apenas nos métodos de escrita.
- */
 @ApplicationScoped
 public class PanacheIfoodCredentialRepository implements IfoodCredentialRepository {
 
@@ -43,6 +38,24 @@ public class PanacheIfoodCredentialRepository implements IfoodCredentialReposito
     @Override
     public Optional<IfoodCredential> findByStoreId(UUID storeId) {
         return panacheRepo.findByStoreId(storeId)
+                .map(IfoodCredentialMapper::toDomain);
+    }
+
+    @Override
+    public Optional<IfoodCredential> findByCatalogId(UUID catalogId) {
+        if (catalogId == null) {
+            return Optional.empty();
+        }
+        return panacheRepo.findByCatalogId(catalogId)
+                .map(IfoodCredentialMapper::toDomain);
+    }
+
+    @Override
+    public Optional<IfoodCredential> findByMerchantId(String merchantId) {
+        if (merchantId == null || merchantId.isBlank()) {
+            return Optional.empty();
+        }
+        return panacheRepo.findByMerchantId(merchantId.trim())
                 .map(IfoodCredentialMapper::toDomain);
     }
 

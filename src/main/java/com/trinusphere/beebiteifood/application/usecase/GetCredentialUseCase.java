@@ -10,7 +10,6 @@ import jakarta.inject.Inject;
 
 import java.util.UUID;
 
-/** Use Case — Busca credenciais iFood de uma Store (sem expor clientSecret). */
 @ApplicationScoped
 public class GetCredentialUseCase {
 
@@ -26,8 +25,14 @@ public class GetCredentialUseCase {
                 .orElseThrow(() -> new CredentialNotFoundException(storeId.toString()));
 
         return new CredentialResponse(
-                cred.getId(), cred.getStoreId(), cred.getClientId(),
-                cred.getMerchantId(), cred.isEnabled(), cred.isTokenValid(), cred.getUpdatedAt()
+                cred.getId(),
+                cred.getStoreId(),
+                cred.getCatalogId(),
+                cred.getClientId(),
+                cred.getMerchantId(),
+                cred.isEnabled(),
+                cred.isTokenValid(),
+                cred.getUpdatedAt()
         );
     }
 }

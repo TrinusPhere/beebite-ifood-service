@@ -8,12 +8,19 @@ import jakarta.enterprise.context.ApplicationScoped;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Repositório Panache auxiliar — não implementa port de domínio (evita conflito de assinaturas). */
 @ApplicationScoped
 public class IfoodCredentialPanacheRepo implements PanacheRepositoryBase<IfoodCredentialEntity, UUID> {
 
     public Optional<IfoodCredentialEntity> findByStoreId(UUID storeId) {
         return find("storeId", storeId).firstResultOptional();
+    }
+
+    public Optional<IfoodCredentialEntity> findByCatalogId(UUID catalogId) {
+        return find("catalogId", catalogId).firstResultOptional();
+    }
+
+    public Optional<IfoodCredentialEntity> findByMerchantId(String merchantId) {
+        return find("merchantId", merchantId).firstResultOptional();
     }
 
     public void deleteByStoreId(UUID storeId) {

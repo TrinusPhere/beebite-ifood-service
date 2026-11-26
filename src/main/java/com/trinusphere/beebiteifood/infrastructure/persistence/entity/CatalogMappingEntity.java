@@ -15,6 +15,9 @@ public class CatalogMappingEntity {
     @Column(name = "id")
     public UUID id;
 
+    @Column(name = "catalog_id", nullable = false)
+    public UUID catalogId;
+
     @Column(name = "store_id", nullable = false)
     public UUID storeId;
 

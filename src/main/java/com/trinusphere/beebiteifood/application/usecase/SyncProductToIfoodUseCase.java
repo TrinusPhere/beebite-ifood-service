@@ -1,6 +1,7 @@
 package com.trinusphere.beebiteifood.application.usecase;
 
 import com.trinusphere.beebiteifood.application.dto.BiteflowCatalogChangedEvent;
+import com.trinusphere.beebiteifood.application.dto.biteflow.BiteflowCatalogResponse.ChannelPriceDto;
 import com.trinusphere.beebiteifood.application.dto.biteflow.BiteflowCatalogResponse.ProductResponse;
 import com.trinusphere.beebiteifood.application.dto.catalog.IfoodCatalogRequest.IfoodUpdatePriceRequest;
 import com.trinusphere.beebiteifood.application.dto.catalog.IfoodCatalogRequest.IfoodUpdateStatusRequest;
@@ -13,6 +14,10 @@ import com.trinusphere.beebiteifood.domain.credential.repository.IfoodCredential
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
+
+import java.math.BigDecimal;
+import java.util.Optional;
+import java.util.UUID;
 
 @ApplicationScoped
 public class SyncProductToIfoodUseCase {
@@ -38,20 +43,16 @@ public class SyncProductToIfoodUseCase {
     @jakarta.enterprise.context.control.ActivateRequestContext
     @jakarta.transaction.Transactional
     public void execute(BiteflowCatalogChangedEvent event) {
-        LOG.infof("[SYNC-TO-IFOOD] Processando evento: %s para o produto %s", event.changeType(), event.productId());
+        LOG.infof("[SYNC-TO-IFOOD] Processando evento: %s para o produto %s (catalog=%s, store=%s)",
+                event.changeType(), event.productId(), event.catalogId(), event.storeId());
 
-        var mappings = catalogMappingRepository.findByStoreId(event.storeId());
-        CatalogMapping mapping = mappings.stream()
-                .filter(m -> m.getBiteflowId() != null && m.getBiteflowId().equals(event.productId()))
-                .findFirst()
-                .orElse(null);
-
+        CatalogMapping mapping = resolveProductMapping(event);
         if (mapping == null || mapping.getIfoodId() == null) {
             LOG.infof("[SYNC-TO-IFOOD] Produto %s não mapeado ou não sincronizado com o iFood. Ignorando.", event.productId());
             return;
         }
 
-        IfoodCredential credential = credentialRepository.findByStoreId(event.storeId()).orElse(null);
+        IfoodCredential credential = resolveCredential(event, mapping);
         boolean credentialValid = credential != null && credential.isEnabled() && credential.isTokenValid();
 
         if ("PRODUCT_DELETED".equals(event.changeType())) {
@@ -60,33 +61,44 @@ public class SyncProductToIfoodUseCase {
         }
 
         if (!credentialValid) {
-            LOG.warnf("[SYNC-TO-IFOOD] Loja %s sem credencial válida. Ignorando.", event.storeId());
+            LOG.warnf("[SYNC-TO-IFOOD] Catálogo/Loja (%s / %s) sem credencial iFood válida. Ignorando.",
+                    event.catalogId(), event.storeId());
             return;
         }
 
         String token = credential.getAccessToken();
         String merchantId = credential.getMerchantId();
+        UUID apiStoreId = credential.getStoreId() != null ? credential.getStoreId() : event.storeId();
 
-        ProductResponse product = biteflowCatalogClient.getProduct(event.storeId(), event.productId());
-        if (product == null) {
-            LOG.warnf("[SYNC-TO-IFOOD] Produto %s não encontrado no BiteFlow (HTTP 404). Ignorando.", event.productId());
-            return;
+        BigDecimal effectiveIfoodPrice = event.effectiveIfoodPrice();
+        String globalStatus = event.globalStatus();
+
+        if (effectiveIfoodPrice == null || globalStatus == null) {
+            ProductResponse product = biteflowCatalogClient.getProduct(apiStoreId, event.productId());
+            if (product == null) {
+                LOG.warnf("[SYNC-TO-IFOOD] Produto %s não encontrado no BiteFlow (HTTP 404). Ignorando.", event.productId());
+                return;
+            }
+            if (effectiveIfoodPrice == null) {
+                effectiveIfoodPrice = extractIfoodPrice(product);
+            }
+            if (globalStatus == null) {
+                globalStatus = product.globalStatus() != null ? product.globalStatus() : product.status();
+            }
         }
 
-        // Atualizar preço
-        if (product.price() != null) {
+        if (effectiveIfoodPrice != null) {
             try {
                 ifoodCatalogSyncClient.updateProductPrice(token, merchantId, mapping.getIfoodId(),
-                        new IfoodUpdatePriceRequest(product.price()));
-                LOG.infof("[SYNC-TO-IFOOD] Preço atualizado no iFood para produto %s", event.productId());
+                        new IfoodUpdatePriceRequest(effectiveIfoodPrice));
+                LOG.infof("[SYNC-TO-IFOOD] Preço iFood atualizado (%s) para produto %s", effectiveIfoodPrice, event.productId());
             } catch (Exception e) {
                 LOG.errorf(e, "[SYNC-TO-IFOOD] Erro ao atualizar preço: %s", e.getMessage());
             }
         }
 
-        // Atualizar status
-        if (product.status() != null) {
-            String ifoodStatus = "AVAILABLE".equals(product.status()) ? "AVAILABLE" : "UNAVAILABLE";
+        if (globalStatus != null) {
+            String ifoodStatus = "AVAILABLE".equals(globalStatus) ? "AVAILABLE" : "UNAVAILABLE";
             try {
                 ifoodCatalogSyncClient.updateProductStatus(token, merchantId, mapping.getIfoodId(),
                         new IfoodUpdateStatusRequest(ifoodStatus));
@@ -97,10 +109,68 @@ public class SyncProductToIfoodUseCase {
         }
     }
 
-    /**
-     * Produto excluído no PDV: pausa o item no iFood (se possível) e remove o vínculo,
-     * evitando mapeamentos órfãos que quebram o merge/comparação depois.
-     */
+    private CatalogMapping resolveProductMapping(BiteflowCatalogChangedEvent event) {
+        if (event.catalogId() != null) {
+            Optional<CatalogMapping> byCatalog = catalogMappingRepository
+                    .findByBiteflowIdAndCatalogId(event.productId(), event.catalogId());
+            if (byCatalog.isPresent()) {
+                return byCatalog.get();
+            }
+            var catalogList = catalogMappingRepository.findByCatalogId(event.catalogId());
+            if (catalogList != null && !catalogList.isEmpty()) {
+                CatalogMapping found = catalogList.stream()
+                        .filter(m -> m.getBiteflowId() != null && m.getBiteflowId().equals(event.productId()))
+                        .findFirst()
+                        .orElse(null);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+
+        if (event.storeId() != null) {
+            var storeMappings = catalogMappingRepository.findByStoreId(event.storeId());
+            if (storeMappings != null) {
+                return storeMappings.stream()
+                        .filter(m -> m.getBiteflowId() != null && m.getBiteflowId().equals(event.productId()))
+                        .findFirst()
+                        .orElse(null);
+            }
+        }
+        return null;
+    }
+
+    private IfoodCredential resolveCredential(BiteflowCatalogChangedEvent event, CatalogMapping mapping) {
+        UUID lookupCatalogId = event.catalogId() != null ? event.catalogId() : mapping.getCatalogId();
+        if (lookupCatalogId != null) {
+            Optional<IfoodCredential> byCatalog = credentialRepository.findByCatalogId(lookupCatalogId);
+            if (byCatalog.isPresent()) {
+                return byCatalog.get();
+            }
+        }
+        if (event.storeId() != null) {
+            Optional<IfoodCredential> byEventStore = credentialRepository.findByStoreId(event.storeId());
+            if (byEventStore.isPresent()) {
+                return byEventStore.get();
+            }
+        }
+        if (mapping.getStoreId() != null && !mapping.getStoreId().equals(event.storeId())) {
+            return credentialRepository.findByStoreId(mapping.getStoreId()).orElse(null);
+        }
+        return null;
+    }
+
+    private BigDecimal extractIfoodPrice(ProductResponse product) {
+        if (product.channelPrices() != null) {
+            for (ChannelPriceDto cp : product.channelPrices()) {
+                if ("IFOOD".equalsIgnoreCase(cp.channel()) && cp.price() != null) {
+                    return cp.price();
+                }
+            }
+        }
+        return product.price();
+    }
+
     private void handleProductDeleted(BiteflowCatalogChangedEvent event, CatalogMapping mapping, IfoodCredential credential) {
         if (credential != null) {
             try {
@@ -108,13 +178,11 @@ public class SyncProductToIfoodUseCase {
                         mapping.getIfoodId(), new IfoodUpdateStatusRequest("UNAVAILABLE"));
                 LOG.infof("[SYNC-TO-IFOOD] Produto %s pausado no iFood devido a exclusão no PDV", event.productId());
             } catch (Exception e) {
-                // O subscriber faz ACK de erros de negócio (sem retry). Por isso o vínculo é removido mesmo assim:
-                // o item aparecerá como "apenas no iFood" na comparação, em vez de virar um vínculo órfão.
                 LOG.errorf(e, "[SYNC-TO-IFOOD] Não foi possível pausar o item %s no iFood: %s", mapping.getIfoodId(), e.getMessage());
             }
         } else {
-            LOG.warnf("[SYNC-TO-IFOOD] Loja %s sem credencial válida: item %s não foi pausado no iFood.",
-                    event.storeId(), mapping.getIfoodId());
+            LOG.warnf("[SYNC-TO-IFOOD] Catálogo/Loja %s sem credencial válida: item %s não foi pausado no iFood.",
+                    event.catalogId() != null ? event.catalogId() : event.storeId(), mapping.getIfoodId());
         }
 
         catalogMappingRepository.delete(mapping);

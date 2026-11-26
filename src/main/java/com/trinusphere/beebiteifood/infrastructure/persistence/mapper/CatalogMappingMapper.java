@@ -10,6 +10,7 @@ public final class CatalogMappingMapper {
         if (entity == null) return null;
         return CatalogMapping.reconstitute(
                 entity.id,
+                entity.catalogId != null ? entity.catalogId : entity.storeId,
                 entity.storeId,
                 entity.ifoodId,
                 entity.biteflowId,
@@ -22,6 +23,7 @@ public final class CatalogMappingMapper {
         if (domain == null) return null;
         CatalogMappingEntity entity = new CatalogMappingEntity();
         entity.id = domain.getId();
+        entity.catalogId = domain.getCatalogId() != null ? domain.getCatalogId() : domain.getStoreId();
         entity.storeId = domain.getStoreId();
         entity.ifoodId = domain.getIfoodId();
         entity.biteflowId = domain.getBiteflowId();

@@ -6,18 +6,16 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Port (Interface) — IfoodCredentialRepository.
- * Define o contrato de persistência de credenciais iFood.
- * Implementado na camada de infraestrutura (Panache).
- */
 public interface IfoodCredentialRepository {
 
     IfoodCredential save(IfoodCredential credential);
 
     Optional<IfoodCredential> findByStoreId(UUID storeId);
 
-    /** Retorna todas as credenciais habilitadas para o ciclo de polling. */
+    Optional<IfoodCredential> findByCatalogId(UUID catalogId);
+
+    Optional<IfoodCredential> findByMerchantId(String merchantId);
+
     List<IfoodCredential> findAllEnabled();
 
     void deleteByStoreId(UUID storeId);

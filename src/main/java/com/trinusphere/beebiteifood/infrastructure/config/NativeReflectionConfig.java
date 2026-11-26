@@ -71,6 +71,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         BiteflowCatalogRequest.TechnicalSheetItemDto.class,
         BiteflowCatalogRequest.CreateModifierGroupRequest.class,
         BiteflowCatalogRequest.ModifierOptionDto.class,
+        BiteflowCatalogResponse.StoreCatalogContextResponse.class,
         BiteflowCatalogResponse.CategoryResponse.class,
         BiteflowCatalogResponse.ProductResponse.class,
         BiteflowCatalogResponse.ChannelPriceDto.class,

@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.UUID;
 
 public interface BiteflowCatalogClient {
+    StoreCatalogContextResponse getStoreCatalogContext(UUID storeId);
+
     String createCategory(UUID storeId, CreateCategoryRequest request);
     String createProduct(UUID storeId, CreateProductRequest request);
     void updateProduct(UUID storeId, UUID productId, CreateProductRequest request);
@@ -16,6 +18,5 @@ public interface BiteflowCatalogClient {
     List<ProductResponse> listProducts(UUID storeId, String categoryId);
     List<ModifierGroupResponse> listModifierGroups(UUID storeId);
 
-    /** Retorna o produto com o externalCode informado, ou null se não existir. */
     ProductResponse findProductByExternalCode(UUID storeId, String externalCode);
 }

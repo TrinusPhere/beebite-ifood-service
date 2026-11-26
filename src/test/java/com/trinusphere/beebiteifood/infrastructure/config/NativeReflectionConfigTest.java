@@ -53,6 +53,7 @@ class NativeReflectionConfigTest {
         assertTrue(registered.contains(IfoodOrderDetails.class));
         assertTrue(registered.contains(BiteflowCatalogRequest.CreateProductRequest.class));
         assertTrue(registered.contains(BiteflowCatalogResponse.ProductResponse.class));
+        assertTrue(registered.contains(BiteflowCatalogResponse.StoreCatalogContextResponse.class));
         assertTrue(registered.contains(IfoodCatalogRequest.IfoodCreateProductRequest.class));
         assertTrue(registered.contains(IfoodCatalogResponse.IfoodItemFull.class));
     }

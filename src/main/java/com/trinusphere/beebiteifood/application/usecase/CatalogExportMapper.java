@@ -107,6 +107,10 @@ public final class CatalogExportMapper {
             price = product.price();
         }
 
+        String effectiveGlobalStatus = product.globalStatus() != null
+                ? product.globalStatus()
+                : (product.status() != null ? product.status() : "AVAILABLE");
+
         List<IfoodContextModifier> contextModifiers = new ArrayList<>();
         if (product.channelPrices() != null) {
             for (ChannelPriceDto cp : product.channelPrices()) {
@@ -115,7 +119,7 @@ public final class CatalogExportMapper {
                     contextModifiers.add(new IfoodContextModifier(
                             ctx,
                             new IfoodPrice(cp.price(), cp.price()),
-                            product.status() != null ? product.status() : "AVAILABLE",
+                            effectiveGlobalStatus,
                             product.externalCode()
                     ));
                 }
@@ -130,7 +134,7 @@ public final class CatalogExportMapper {
                 product.description(),
                 mapProductType(product.catalogItemType()),
                 ifoodCategoryId,
-                product.status() != null ? product.status() : "AVAILABLE",
+                effectiveGlobalStatus,
                 new IfoodPrice(price, price),
                 product.externalCode(),
                 "NOT_APPLICABLE", // serves: padrão para lanches

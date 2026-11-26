@@ -13,12 +13,13 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,42 +28,57 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
 
     private static final Logger LOG = Logger.getLogger(BiteflowApiClient.class);
 
-    private static final String CATEGORIES_PATH = "/api/v1/categories";
-    private static final String PRODUCTS_PATH = "/api/v1/products";
-    private static final String MODIFIER_GROUPS_PATH = "/api/v1/modifier-groups";
+    private static final String INTERNAL_CATALOG_BASE = "/api/v1/internal/catalog";
+    private static final String STORES_CONTEXT_PATH = INTERNAL_CATALOG_BASE + "/stores/";
+    private static final String CATEGORIES_PATH = INTERNAL_CATALOG_BASE + "/categories";
+    private static final String PRODUCTS_PATH = INTERNAL_CATALOG_BASE + "/products";
+    private static final String MODIFIER_GROUPS_PATH = INTERNAL_CATALOG_BASE + "/modifier-groups";
 
     @ConfigProperty(name = "biteflow.api.base-url", defaultValue = "http://localhost:8080")
     String baseUrl;
 
+    @ConfigProperty(name = "biteflow.internal.service-token", defaultValue = "beebite-internal-dev-token")
+    String internalServiceToken;
+
     @Inject
     ObjectMapper objectMapper;
-
-    @jakarta.ws.rs.core.Context
-    jakarta.ws.rs.core.HttpHeaders httpHeaders;
-
-    private String getAuthHeader() {
-        if (httpHeaders != null) {
-            String authHeader = httpHeaders.getHeaderString("Authorization");
-            if (authHeader != null && !authHeader.isBlank()) {
-                return authHeader;
-            }
-            
-            // Extract from Cookie if header is not present
-            var cookies = httpHeaders.getCookies();
-            if (cookies != null && cookies.containsKey("biteflow_jwt")) {
-                String cookieVal = cookies.get("biteflow_jwt").getValue();
-                if (cookieVal != null && cookieVal.startsWith("Bearer")) {
-                    return cookieVal;
-                }
-                return "Bearer " + cookieVal;
-            }
-        }
-        return null;
-    }
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+
+    private HttpRequest.Builder baseInternalRequest(String path, UUID storeId) {
+        String normalizedBase = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(normalizedBase + path))
+                .header("X-Internal-Service-Token", internalServiceToken != null ? internalServiceToken.trim() : "")
+                .timeout(Duration.ofSeconds(15));
+        if (storeId != null) {
+            builder.header("X-Store-Id", storeId.toString());
+        }
+        return builder;
+    }
+
+    @Override
+    public StoreCatalogContextResponse getStoreCatalogContext(UUID storeId) {
+        try {
+            HttpRequest request = baseInternalRequest(STORES_CONTEXT_PATH + storeId + "/context", storeId)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                return objectMapper.readValue(response.body(), StoreCatalogContextResponse.class);
+            }
+            if (response.statusCode() == 404) {
+                return null;
+            }
+            throw new IfoodIntegrationException("Erro ao consultar contexto de catálogo da loja no BeeBite: HTTP " + response.statusCode());
+        } catch (IfoodIntegrationException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IfoodIntegrationException("Erro ao chamar API interna do BeeBite (StoreContext) -> " + e.getMessage(), e);
+        }
+    }
 
     @Override
     public String createCategory(UUID storeId, CreateCategoryRequest request) {
@@ -78,19 +94,12 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
     public void updateProduct(UUID storeId, UUID productId, CreateProductRequest request) {
         try {
             String bodyJson = objectMapper.writeValueAsString(request);
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + PRODUCTS_PATH + "/" + productId))
-                    .header("X-Store-Id", storeId.toString())
+            HttpRequest req = baseInternalRequest(PRODUCTS_PATH + "/" + productId, storeId)
                     .header("Content-Type", "application/json")
                     .PUT(HttpRequest.BodyPublishers.ofString(bodyJson))
-                    .timeout(Duration.ofSeconds(15));
+                    .build();
 
-            String authHeader = getAuthHeader();
-            if (authHeader != null) requestBuilder.header("Authorization", authHeader);
-
-            HttpRequest req = requestBuilder.build();
             HttpResponse<String> response = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
-
             if (response.statusCode() >= 400) {
                 throw new IfoodIntegrationException("Erro ao atualizar produto no BiteFlow: HTTP " + response.statusCode());
             }
@@ -114,22 +123,17 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
     @Override
     public ProductResponse getProduct(UUID storeId, UUID productId) {
         try {
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + PRODUCTS_PATH + "/" + productId))
-                    .header("X-Store-Id", storeId.toString())
+            HttpRequest request = baseInternalRequest(PRODUCTS_PATH + "/" + productId, storeId)
                     .GET()
-                    .timeout(Duration.ofSeconds(15));
-            
-            String authHeader = getAuthHeader();
-            if (authHeader != null) requestBuilder.header("Authorization", authHeader);
-
-            HttpRequest request = requestBuilder.build();
+                    .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 return objectMapper.readValue(response.body(), ProductResponse.class);
             }
-            if (response.statusCode() == 404) return null;
+            if (response.statusCode() == 404) {
+                return null;
+            }
             throw new IfoodIntegrationException("Erro ao buscar produto no BiteFlow: HTTP " + response.statusCode());
         } catch (IfoodIntegrationException e) {
             throw e;
@@ -157,26 +161,16 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
         if (externalCode == null || externalCode.isBlank()) return null;
         LOG.infof("[BITEFLOW-CLIENT] Buscando produto por externalCode='%s' (endpoint dedicado)", externalCode);
         try {
-            // Encode do externalCode para URL (pode conter caracteres especiais como '-')
-            String encodedCode = java.net.URLEncoder.encode(externalCode, java.nio.charset.StandardCharsets.UTF_8)
-                    .replace("+", "%20");
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + PRODUCTS_PATH + "/by-external-code/" + encodedCode))
-                    .header("X-Store-Id", storeId.toString())
+            String encodedCode = URLEncoder.encode(externalCode, StandardCharsets.UTF_8).replace("+", "%20");
+            HttpRequest request = baseInternalRequest(PRODUCTS_PATH + "/by-external-code/" + encodedCode, storeId)
                     .GET()
-                    .timeout(Duration.ofSeconds(15));
+                    .build();
 
-            String authHeader = getAuthHeader();
-            if (authHeader != null) requestBuilder.header("Authorization", authHeader);
-
-            HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                ProductResponse found = objectMapper.readValue(response.body(), ProductResponse.class);
-                LOG.infof("[BITEFLOW-CLIENT] Produto encontrado: id=%s, externalCode='%s'", found.id(), found.externalCode());
-                return found;
+                return objectMapper.readValue(response.body(), ProductResponse.class);
             }
             if (response.statusCode() == 404) {
-                LOG.warnf("[BITEFLOW-CLIENT] Produto com externalCode='%s' N\u00c3O encontrado (404).", externalCode);
                 return null;
             }
             LOG.warnf("[BITEFLOW-CLIENT] Busca por externalCode retornou HTTP %d", response.statusCode());
@@ -187,47 +181,33 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
         }
     }
 
-    /** POST genérico. Em caso de 409 Conflict (duplicate), busca o produto existente pelo externalCode e retorna seu ID. */
     private String post(UUID storeId, String path, Object body) {
         try {
             String bodyJson = objectMapper.writeValueAsString(body);
-
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + path))
+            HttpRequest request = baseInternalRequest(path, storeId)
                     .header("Content-Type", "application/json")
-                    .header("X-Store-Id", storeId.toString())
                     .POST(HttpRequest.BodyPublishers.ofString(bodyJson))
-                    .timeout(Duration.ofSeconds(15));
-
-            String authHeader = getAuthHeader();
-            if (authHeader != null) requestBuilder.header("Authorization", authHeader);
-
-            HttpRequest request = requestBuilder.build();
+                    .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                // The actual Biteflow API returns the created DTO with an 'id' field.
                 JsonNode root = objectMapper.readTree(response.body());
                 if (root.has("id")) {
                     return root.get("id").asText();
                 }
                 return response.body();
             }
-            // 409 Conflict ou 500 causado por duplicate key: tenta recuperar o produto existente pelo externalCode
             if ((response.statusCode() == 409 || response.statusCode() == 500) && PRODUCTS_PATH.equals(path)) {
-                LOG.warnf("[BITEFLOW-CLIENT] POST produto retornou HTTP %d. Tentando recuperar produto existente pelo externalCode...", response.statusCode());
                 try {
                     JsonNode reqBody = objectMapper.readTree(bodyJson);
                     String extCode = reqBody.has("externalCode") ? reqBody.get("externalCode").asText() : null;
                     if (extCode != null && !extCode.isBlank()) {
                         ProductResponse existing = findProductByExternalCode(storeId, extCode);
                         if (existing != null) {
-                            LOG.infof("[BITEFLOW-CLIENT] Produto recuperado via externalCode='%s': id=%s", extCode, existing.id());
                             return existing.id();
                         }
                     }
                 } catch (Exception ignored) {
-                    LOG.warnf("[BITEFLOW-CLIENT] Falha ao tentar recuperar produto existente: %s", ignored.getMessage());
                 }
             }
             throw new IfoodIntegrationException("Erro ao criar entidade no BiteFlow: HTTP " + response.statusCode());
@@ -249,16 +229,9 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
                 String separator = path.contains("?") ? "&" : "?";
                 String paginatedPath = path + separator + "page=" + page + "&size=" + pageSize;
 
-                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                        .uri(URI.create(baseUrl + paginatedPath))
-                        .header("X-Store-Id", storeId.toString())
+                HttpRequest request = baseInternalRequest(paginatedPath, storeId)
                         .GET()
-                        .timeout(Duration.ofSeconds(15));
-
-                String authHeader = getAuthHeader();
-                if (authHeader != null) requestBuilder.header("Authorization", authHeader);
-
-                HttpRequest request = requestBuilder.build();
+                        .build();
 
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() == 200) {
@@ -267,7 +240,6 @@ public class BiteflowApiClient implements BiteflowCatalogClient {
                     List<T> pageContent = objectMapper.readValue(contentNode.toString(), typeRef);
                     allResults.addAll(pageContent);
 
-                    // Check if there are more pages
                     int totalPages = root.has("totalPages") ? root.get("totalPages").asInt() : 1;
                     page++;
                     hasMore = page < totalPages;

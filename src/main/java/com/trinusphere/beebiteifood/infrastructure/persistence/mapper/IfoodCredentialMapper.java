@@ -5,7 +5,6 @@ import com.trinusphere.beebiteifood.infrastructure.persistence.entity.IfoodCrede
 
 import java.time.LocalDateTime;
 
-/** Mapper entre IfoodCredential (domínio) e IfoodCredentialEntity (JPA). */
 public final class IfoodCredentialMapper {
 
     private IfoodCredentialMapper() {}
@@ -14,6 +13,7 @@ public final class IfoodCredentialMapper {
         return IfoodCredential.reconstitute(
                 entity.getId(),
                 entity.getStoreId(),
+                entity.getCatalogId() != null ? entity.getCatalogId() : entity.getStoreId(),
                 entity.getClientId(),
                 entity.getEncryptedClientSecret(),
                 entity.getMerchantId(),
@@ -31,6 +31,7 @@ public final class IfoodCredentialMapper {
         IfoodCredentialEntity entity = new IfoodCredentialEntity();
         entity.setId(domain.getId());
         entity.setStoreId(domain.getStoreId());
+        entity.setCatalogId(domain.getCatalogId() != null ? domain.getCatalogId() : domain.getStoreId());
         entity.setClientId(domain.getClientId());
         entity.setEncryptedClientSecret(domain.getEncryptedClientSecret());
         entity.setMerchantId(domain.getMerchantId());

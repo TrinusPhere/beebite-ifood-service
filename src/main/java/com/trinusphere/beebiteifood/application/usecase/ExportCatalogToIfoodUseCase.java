@@ -7,6 +7,7 @@ import com.trinusphere.beebiteifood.application.port.IfoodCatalogSyncClient;
 import com.trinusphere.beebiteifood.domain.catalog.entity.CatalogMapping;
 import com.trinusphere.beebiteifood.domain.catalog.repository.CatalogMappingRepository;
 import com.trinusphere.beebiteifood.domain.shared.exception.BusinessRuleException;
+import com.trinusphere.beebiteifood.domain.shared.exception.IfoodIntegrationException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -32,54 +33,42 @@ public class ExportCatalogToIfoodUseCase {
 
     @jakarta.transaction.Transactional
     public void execute(UUID storeId, String merchantId, String token) {
-        LOG.infof("[EXPORT] Iniciando export para storeId=%s, merchantId=%s", storeId, merchantId);
+        execute(storeId, storeId, merchantId, token);
+    }
 
-        // 0. Obter o catalogId do iFood (necessário para criar categorias)
+    @jakarta.transaction.Transactional
+    public void execute(UUID storeId, UUID catalogId, String merchantId, String token) {
+        UUID effectiveCatalogId = catalogId != null ? catalogId : storeId;
+        LOG.infof("[EXPORT] Iniciando export para storeId=%s, catalogId=%s, merchantId=%s", storeId, effectiveCatalogId, merchantId);
+
         List<String> catalogIds = ifoodCatalogSyncClient.listCatalogIds(token, merchantId);
         if (catalogIds.isEmpty()) {
             throw new BusinessRuleException("Nenhum catálogo encontrado no iFood para o merchantId: " + merchantId);
         }
-        String catalogId = catalogIds.get(0); // Usa o primeiro catálogo disponível
-        LOG.infof("[EXPORT] Usando catalogId=%s", catalogId);
+        String ifoodCatalogId = catalogIds.get(0);
 
-        // 1. Obter todas as categorias do BiteFlow
         List<CategoryResponse> categories = biteflowCatalogClient.listCategories(storeId);
-        LOG.infof("[EXPORT] Categorias encontradas no BiteFlow: %d", categories.size());
-
         List<ModifierGroupResponse> modifierGroups = biteflowCatalogClient.listModifierGroups(storeId);
-        LOG.infof("[EXPORT] Modifier groups encontrados no BiteFlow: %d", modifierGroups.size());
 
         for (CategoryResponse category : categories) {
-            LOG.infof("[EXPORT] Processando categoria: %s (id=%s)", category.name(), category.id());
-
-            // Verificar se a categoria já está mapeada
-            Optional<CatalogMapping> existingCatMapping = mappingRepository.findByBiteflowIdAndStoreId(UUID.fromString(category.id()), storeId);
+            UUID bfCatUuid = UUID.fromString(category.id());
+            Optional<CatalogMapping> existingCatMapping = findMappingByBiteflowId(bfCatUuid, effectiveCatalogId, storeId);
             String ifoodCategoryId;
 
             if (existingCatMapping.isEmpty()) {
-                // Criar no iFood (agora com catalogId)
                 IfoodCreateCategoryRequest catReq = CatalogExportMapper.toIfoodCategory(category);
-                LOG.infof("[EXPORT] Criando categoria no iFood: %s (catalogId=%s)", category.name(), catalogId);
-                ifoodCategoryId = ifoodCatalogSyncClient.createCategory(token, merchantId, catalogId, catReq);
-                LOG.infof("[EXPORT] Categoria criada no iFood com id=%s", ifoodCategoryId);
-
-                mappingRepository.save(new CatalogMapping(storeId, ifoodCategoryId, UUID.fromString(category.id()), "CATEGORY"));
+                ifoodCategoryId = ifoodCatalogSyncClient.createCategory(token, merchantId, ifoodCatalogId, catReq);
+                mappingRepository.save(new CatalogMapping(effectiveCatalogId, storeId, ifoodCategoryId, bfCatUuid, "CATEGORY"));
             } else {
                 ifoodCategoryId = existingCatMapping.get().getIfoodId();
-                LOG.infof("[EXPORT] Categoria já mapeada: ifoodId=%s", ifoodCategoryId);
             }
 
-            // 2. Para cada produto da categoria
             List<ProductResponse> products = biteflowCatalogClient.listProducts(storeId, category.id());
-            LOG.infof("[EXPORT] Produtos da categoria %s: %d", category.name(), products.size());
-
             for (ProductResponse product : products) {
-                LOG.infof("[EXPORT] Processando produto: %s (id=%s)", product.name(), product.id());
-
-                Optional<CatalogMapping> existingProdMapping = mappingRepository.findByBiteflowIdAndStoreId(UUID.fromString(product.id()), storeId);
+                UUID bfProdUuid = UUID.fromString(product.id());
+                Optional<CatalogMapping> existingProdMapping = findMappingByBiteflowId(bfProdUuid, effectiveCatalogId, storeId);
 
                 if (existingProdMapping.isEmpty()) {
-                    // Mapeia os modifiers do produto
                     List<ModifierGroupResponse> productGroups = modifierGroups.stream()
                             .filter(g -> product.modifierGroupIds() != null && product.modifierGroupIds().contains(g.id()))
                             .collect(Collectors.toList());
@@ -87,25 +76,18 @@ public class ExportCatalogToIfoodUseCase {
                     String generatedItemId = UUID.randomUUID().toString();
                     IfoodCreateProductRequest productReq = CatalogExportMapper.toIfoodProduct(product, productGroups, ifoodCategoryId, generatedItemId);
 
-                    LOG.infof("[EXPORT] Criando produto no iFood: %s (gerado id: %s)", product.name(), generatedItemId);
                     ifoodCatalogSyncClient.createProduct(token, merchantId, productReq);
-                    LOG.infof("[EXPORT] Produto criado no iFood com id=%s", generatedItemId);
-
-                    mappingRepository.save(new CatalogMapping(storeId, generatedItemId, UUID.fromString(product.id()), "PRODUCT"));
+                    mappingRepository.save(new CatalogMapping(effectiveCatalogId, storeId, generatedItemId, bfProdUuid, "PRODUCT"));
                 } else {
                     String ifoodProductId = existingProdMapping.get().getIfoodId();
-                    LOG.infof("[EXPORT] Produto já mapeado: ifoodId=%s, atualizando status", ifoodProductId);
-
+                    String effectiveGlobalStatus = product.globalStatus() != null ? product.globalStatus() : product.status();
                     try {
                         ifoodCatalogSyncClient.updateProductStatus(token, merchantId, ifoodProductId,
-                                new IfoodUpdateStatusRequest(product.status()));
-                    } catch (com.trinusphere.beebiteifood.domain.shared.exception.IfoodIntegrationException ex) {
+                                new IfoodUpdateStatusRequest(effectiveGlobalStatus));
+                    } catch (IfoodIntegrationException ex) {
                         if (ex.getMessage().contains("HTTP 404")) {
-                            LOG.warnf("[EXPORT] Produto %s não encontrado no iFood (404). Removendo mapping e recriando...", ifoodProductId);
-                            mappingRepository.deleteByStoreId(storeId); // Não é o ideal apagar todos, mas o panache só tem deleteByStoreId na interface
-                            
-                            // Em vez de recriar no mesmo loop (o que é complexo sem reescrever muito), vamos lançar uma exceção clara para rodar de novo
-                            throw new BusinessRuleException("O iFood não encontrou um produto mapeado (404). O mapeamento foi limpo. Por favor, execute o EXPORT novamente.");
+                            mappingRepository.delete(existingProdMapping.get());
+                            throw new BusinessRuleException("O iFood não encontrou um produto mapeado (404). O mapeamento órfão foi removido. Execute o EXPORT novamente.");
                         } else {
                             throw ex;
                         }
@@ -113,7 +95,10 @@ public class ExportCatalogToIfoodUseCase {
                 }
             }
         }
+    }
 
-        LOG.infof("[EXPORT] Export concluído para storeId=%s", storeId);
+    private Optional<CatalogMapping> findMappingByBiteflowId(UUID biteflowId, UUID catalogId, UUID storeId) {
+        Optional<CatalogMapping> byCatalog = mappingRepository.findByBiteflowIdAndCatalogId(biteflowId, catalogId);
+        return byCatalog.isPresent() ? byCatalog : mappingRepository.findByBiteflowIdAndStoreId(biteflowId, storeId);
     }
 }
